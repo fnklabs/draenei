@@ -1,0 +1,89 @@
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+if (hasProperty("teamcity")) {
+    project.ext.buildVersion = teamcity["build.number"]
+} else {
+    project.ext.buildVersion = '0.1'
+}
+
+version = project.ext.buildVersion
+group = 'com.fnklabs.draenei'
+
+println("App module version:" + project.ext.buildVersion)
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url 'http://dl.bintray.com/jfrog/jfrog-jars' }
+    }
+    dependencies {
+        classpath(group: 'org.jfrog.buildinfo', name: 'build-info-extractor-gradle', version: '2.2.4')
+    }
+}
+
+
+
+
+configurations {
+    compile.exclude module: 'slf4j-log4j12'
+    compile.exclude module: 'hibernate-validator'
+}
+
+dependencies {
+    compile 'junit:junit:4.12'
+    compile 'org.mockito:mockito-all:1.9.5'
+    compile 'com.intellij:annotations:12.0'
+
+    compile 'org.apache.commons:commons-math:2.2'
+    compile 'org.apache.commons:commons-lang3:3.3.2'
+
+    compile 'com.datastax.cassandra:cassandra-driver-core:2.1.5'
+    compile 'org.apache.cassandra:cassandra-all:2.1.5'
+
+    compile 'com.ecyrd.speed4j:speed4j:0.12'
+
+    compile 'net.jodah:lyra:0.5.0'
+
+    compile 'org.slf4j:slf4j-api:1.7.9'
+    compile 'ch.qos.logback:logback-parent:1.1.2'
+
+
+    compile 'com.google.guava:guava:18.0'
+
+    compile 'com.hazelcast:hazelcast:3.5.2'
+    compile 'com.hazelcast:hazelcast-client:3.5.2'
+
+}
+
+jar {
+    baseName = 'fnklabs-draenei'
+    version = project.ext.buildVersion
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.1'
+}
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives javadocJar, sourcesJar
+}
+
