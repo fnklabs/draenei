@@ -210,7 +210,7 @@ public class CassandraClient {
     }
 
     /**
-     * Initiate close cluster & session operations
+     * Initiate close cluster and session operations
      */
     public void close() {
         session.close();

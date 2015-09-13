@@ -6,11 +6,11 @@ apply plugin: 'signing'
 if (hasProperty("teamcity")) {
     project.ext.buildVersion = teamcity["build.number"]
 } else {
-    project.ext.buildVersion = '0.1'
+    project.ext.buildVersion = '0.1.1'
 }
 
 version = project.ext.buildVersion
-group = 'com.fnklabs.draenei'
+group = 'com.fnklabs'
 
 println("App module version:" + project.ext.buildVersion)
 
@@ -84,6 +84,52 @@ task sourcesJar(type: Jar) {
 }
 
 artifacts {
-    archives javadocJar, sourcesJar
+    archives jar
+    archives javadocJar
+    archives sourcesJar
 }
 
+signing {
+    sign configurations.archives
+}
+
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: sonatypeUsername, password: sonatypePassword)
+            }
+
+            pom.project {
+                name 'draenei'
+                packaging 'jar'
+                description 'ORM for Cassandra but with distributed cache and analytics utils from package'
+                url 'https://github.com/fnklabs/draenei'
+
+                scm {
+                    url 'scm:git@github.com:fnklabs/draenei.git'
+                    connection 'scm:git@github.com:fnklabs/draenei.git'
+                    developerConnection 'scm:git@github.com:fnklabs/draenei.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'aysheka'
+                        name 'Alisher Alimov'
+                    }
+                }
+            }
+        }
+    }
+}

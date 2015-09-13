@@ -121,7 +121,7 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
     /**
      * Notification when entry was removed
      *
-     * @param entity
+     * @param entity Entity that must be removed
      */
     protected void onEntryRemove(T entity) {
 
@@ -136,6 +136,8 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
      *
      * @param entry          Entry
      * @param entryProcessor User Function
+     *
+     * @return Future for current operation
      */
     protected ListenableFuture<Boolean> executeOnEntry(@NotNull T entry, @NotNull EntryProcessor<String, T> entryProcessor) {
         SettableFuture<Boolean> booleanSettableFuture = SettableFuture.<Boolean>create();
