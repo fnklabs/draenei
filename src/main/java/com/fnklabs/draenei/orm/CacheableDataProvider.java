@@ -11,6 +11,7 @@ import com.hazelcast.core.ExecutionCallback;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.core.IMap;
+import com.hazelcast.map.EntryProcessor;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -54,6 +55,33 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
          */
         dataGrid = hazelcastClient.<Long, T>getMap(getMapName(clazz));
     }
+
+    public CacheableDataProvider(Class<T> clazz,
+                                 CassandraClient cassandraClient,
+                                 HazelcastInstance hazelcastClient,
+                                 MetricsFactory metricsFactory,
+                                 ListeningExecutorService executorService) {
+
+        super(clazz, cassandraClient, metricsFactory, executorService);
+
+        this.eventListener = new EventListener<T>() {
+            @Override
+            public void onEntrySave(T entry) {
+
+            }
+
+            @Override
+            public void onEntryRemove(T entry) {
+
+            }
+        };
+
+        /**
+         * Initialize dataGrid
+         */
+        dataGrid = hazelcastClient.<Long, T>getMap(getMapName(clazz));
+    }
+
 
     @Override
     public ListenableFuture<T> findOneAsync(Object... keys) {
@@ -162,6 +190,36 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         });
 
         return deleteFuture;
+    }
+
+    /**
+     * Execute function on entry
+     *
+     * @param entry          Entry
+     * @param entryProcessor User Function
+     *
+     * @return Future for current operation
+     */
+    protected ListenableFuture<Boolean> executeOnEntry(@NotNull T entry, @NotNull EntryProcessor<Long, T> entryProcessor) {
+        Long entityId = entry.getCacheKey() == null ? buildCacheKey(entry) : entry.getCacheKey();
+
+        ICompletableFuture<Boolean> completableFuture = (ICompletableFuture<Boolean>) getMap().submitToKey(entityId, entryProcessor);
+
+        SettableFuture<Boolean> responseFuture = SettableFuture.<Boolean>create();
+
+        completableFuture.andThen(new ExecutionCallback<Boolean>() {
+            @Override
+            public void onResponse(Boolean response) {
+                responseFuture.set(response);
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                responseFuture.setException(t);
+            }
+        });
+
+        return responseFuture;
     }
 
     @NotNull
