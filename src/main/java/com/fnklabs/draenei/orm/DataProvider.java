@@ -31,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class DataProvider<V> {
     protected static final Logger LOGGER = LoggerFactory.getLogger(DataProvider.class);
@@ -95,7 +96,7 @@ public class DataProvider<V> {
             LOGGER.warn("Cant prepare query: " + queryString, e);
 
             SettableFuture<Boolean> booleanSettableFuture = SettableFuture.<Boolean>create();
-            booleanSettableFuture.set(false);
+            booleanSettableFuture.setException(e);
 
             resultFuture = booleanSettableFuture;
         }
@@ -417,30 +418,30 @@ public class DataProvider<V> {
         return getEntityMetadata().getConsistencyLevel();
     }
 
-    protected <T> void monitorFuture(Timer.Context timer, ListenableFuture<T> listenableFuture) {
-        monitorFuture(timer, listenableFuture, new Consumer<T>() {
+    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture) {
+        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
             @Override
-            public void accept(T t) {
-
+            public Boolean apply(Input input) {
+                return true;
             }
         });
     }
 
-    protected <T> void monitorFuture(Timer.Context timer, ListenableFuture<T> listenableFuture, Consumer<T> userCallback) {
-        Futures.addCallback(listenableFuture, new FutureCallback<T>() {
-            @Override
-            public void onSuccess(T result) {
-                userCallback.accept(result);
+    /**
+     * Monitor future completion
+     *
+     * @param timer            Timer that will be close on Future success or failure
+     * @param listenableFuture Listenable future
+     * @param userCallback     User callback that will be executed on Future success
+     * @param <Input>          Future class type
+     * @param <Output>         User callback output
+     *
+     * @return Listenable future
+     */
+    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
+        Futures.addCallback(listenableFuture, new TimerFutureCallback<Input>(timer), getExecutorService());
 
-                timer.stop();
-            }
-
-            @Override
-            public void onFailure(Throwable t) {
-                timer.stop();
-                LOGGER.warn("Cant complete operation", t);
-            }
-        }, executorService);
+        return Futures.transform(listenableFuture, new JdkFunctionWrapper<Input, Output>(userCallback), getExecutorService());
     }
 
     private EntityMetadata build(Class<V> clazz) throws MetadataException {
@@ -459,7 +460,8 @@ public class DataProvider<V> {
             throw new MetadataException(String.format("Table annotation is missing for %s", clazz.getName()));
         }
 
-        EntityMetadata entityMetadata = new EntityMetadata(annotation.name(), annotation.compactStorage(), annotation.fetchSize(), annotation.consistencyLevel(), getCassandraClient().getTableMetadata(annotation.name()));
+        EntityMetadata entityMetadata = new EntityMetadata(annotation.name(), annotation.compactStorage(), annotation.fetchSize(), annotation.consistencyLevel(), getCassandraClient()
+                .getTableMetadata(annotation.name()));
 
         try {
             BeanInfo beanInfo = Introspector.getBeanInfo(clazz);
@@ -527,5 +529,42 @@ public class DataProvider<V> {
             }
         }
         return fieldMetadataList;
+    }
+
+    private static class JdkFunctionWrapper<Input, Output> implements com.google.common.base.Function<Input, Output> {
+        private final Function<Input, Output> jdkFunction;
+
+        private JdkFunctionWrapper(Function<Input, Output> jdkFunction) {
+            this.jdkFunction = jdkFunction;
+        }
+
+        @Override
+        public Output apply(Input input) {
+            return jdkFunction.apply(input);
+        }
+    }
+
+    /**
+     * Function for stoping timer on future completion
+     *
+     * @param <Input> Future type
+     */
+    private static class TimerFutureCallback<Input> implements FutureCallback<Input> {
+        private final Timer.Context timer;
+
+        private TimerFutureCallback(Timer.Context timer) {
+            this.timer = timer;
+        }
+
+        @Override
+        public void onSuccess(Input result) {
+            timer.stop();
+        }
+
+        @Override
+        public void onFailure(Throwable t) {
+            timer.stop();
+            LOGGER.warn("Cant complete operation", t);
+        }
     }
 }

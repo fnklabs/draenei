@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 
 class EntityMetadata {
     private String tableName;
@@ -30,7 +29,7 @@ class EntityMetadata {
         this.tableMetadata = tableMetadata;
     }
 
-    public void addColumnMetadata(FieldMetadata fieldMetadata) {
+    protected void addColumnMetadata(FieldMetadata fieldMetadata) {
         List<FieldMetadata> metadataList = columnsMetadata.getOrDefault(fieldMetadata.getName(), new ArrayList<>());
         metadataList.add(fieldMetadata);
 
@@ -43,69 +42,38 @@ class EntityMetadata {
         });
     }
 
-    public Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
+    protected Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
         return Optional.of(primaryKeys.get(oder));
     }
 
-    public String getTableName() {
-        return tableName;
+    protected <T> ByteBuffer serialize(FieldMetadata<T> fieldMetadata, Object value) {
+        if (value == null) {
+            return null;
+        }
+        ColumnMetadata column = tableMetadata.getColumn(fieldMetadata.getName());
+
+        if (value.getClass().isEnum()) {
+            return DataType.text().serialize(value.toString(), ProtocolVersion.NEWEST_SUPPORTED);
+        }
+
+        return column.getType().serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
     }
 
-    public boolean isCompactStorage() {
+    protected List<FieldMetadata> getColumns() {
+        List<FieldMetadata> fieldMetadataList = new ArrayList<>();
+
+        columnsMetadata.forEach((columnName, columnsMetadata) -> {
+            columnsMetadata.stream().filter(item -> item.getClass().equals(FieldMetadata.class)).forEach(fieldMetadataList::add);
+        });
+
+        return fieldMetadataList;
+    }
+
+    protected boolean isCompactStorage() {
         return compactStorage;
     }
 
-    public int getMaxFetchSize() {
-        return maxFetchSize;
-    }
-
-    public ConsistencyLevel getConsistencyLevel() {
-        return consistencyLevel;
-    }
-
-    public void validate() {
-        if (StringUtils.isEmpty(getTableName())) {
-            throw new MetadataException(String.format("Invalid table name"));
-        }
-
-        if (getPrimaryKeysSize() < 1) {
-            throw new MetadataException(String.format("Entity must contains primary key"));
-        }
-    }
-
-    public int getPrimaryKeysSize() {
-        return tableMetadata.getPrimaryKey().size();
-    }
-
-
-    public int getMinPrimaryKeys() {
-        if (getCompositeKeysSize() > 0) {
-            return getCompositeKeysSize();
-        }
-
-        return 1;
-    }
-
-
-    public int getCompositeKeysSize() {
-        AtomicInteger atomicInteger = new AtomicInteger(0);
-
-        columnsMetadata.forEach((columnName, columnsMetadata) -> {
-            long count = columnsMetadata.stream().filter(item -> item instanceof CompositeKeyMetadata).count();
-
-            if (count > 0) {
-                atomicInteger.getAndIncrement();
-            }
-        });
-
-        return atomicInteger.get();
-    }
-
-    public int getClusteringKeysSize() {
-        return tableMetadata.getClusteringColumns().size();
-    }
-
-    public <T> T deserialize(FieldMetadata<T> fieldMetadata, ByteBuffer bytesUnsafe) {
+    protected <T> T deserialize(FieldMetadata<T> fieldMetadata, ByteBuffer bytesUnsafe) {
         if (bytesUnsafe == null) {
             return null;
         }
@@ -128,26 +96,61 @@ class EntityMetadata {
         return (T) column.getType().deserialize(bytesUnsafe, ProtocolVersion.NEWEST_SUPPORTED);
     }
 
-    public <T> ByteBuffer serialize(FieldMetadata<T> fieldMetadata, Object value) {
-        if (value == null) {
-            return null;
-        }
-        ColumnMetadata column = tableMetadata.getColumn(fieldMetadata.getName());
-
-        if (value.getClass().isEnum()) {
-            return DataType.text().serialize(value.toString(), ProtocolVersion.NEWEST_SUPPORTED);
-        }
-
-        return column.getType().serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
+    protected String getTableName() {
+        return tableName;
     }
 
-    public List<FieldMetadata> getColumns() {
-        List<FieldMetadata> fieldMetadataList = new ArrayList<>();
+    protected int getClusteringKeysSize() {
+        return tableMetadata.getClusteringColumns().size();
+    }
 
-        columnsMetadata.forEach((columnName, columnsMetadata) -> {
-            columnsMetadata.stream().filter(item -> item.getClass().equals(FieldMetadata.class)).forEach(fieldMetadataList::add);
-        });
+    protected int getCompositeKeysSize() {
 
-        return fieldMetadataList;
+        int compositeKeysSize = columnsMetadata.entrySet()
+                                               .stream()
+                                               .mapToInt(entry -> {
+                                                           boolean hasCompositeKey = entry.getValue()
+                                                                                          .stream()
+                                                                                          .anyMatch(item -> item instanceof CompositeKeyMetadata);
+
+                                                           if (hasCompositeKey) {
+                                                               return 1;
+                                                           }
+
+                                                           return 0;
+                                                       }
+                                               ).sum();
+
+        return compositeKeysSize;
+    }
+
+    protected int getMaxFetchSize() {
+        return maxFetchSize;
+    }
+
+    protected int getMinPrimaryKeys() {
+        if (getCompositeKeysSize() > 0) {
+            return getCompositeKeysSize();
+        }
+
+        return 1;
+    }
+
+    protected int getPrimaryKeysSize() {
+        return tableMetadata.getPrimaryKey().size();
+    }
+
+    protected ConsistencyLevel getConsistencyLevel() {
+        return consistencyLevel;
+    }
+
+    protected void validate() {
+        if (StringUtils.isEmpty(getTableName())) {
+            throw new MetadataException(String.format("Invalid table name: \"%s\"", getTableName()));
+        }
+
+        if (getPrimaryKeysSize() < 1) {
+            throw new MetadataException(String.format("Entity \"%s\"must contains primary key", getClass().getName()));
+        }
     }
 }

@@ -15,12 +15,12 @@ public interface Cacheable extends Serializable {
      * @return Entity cache ID
      */
     @Nullable
-    Long getCacheId();
+    Long getCacheKey();
 
     /**
      * Set entity cache id
      *
      * @param id Entity cache id
      */
-    void setCacheId(@NotNull Long id);
+    void setCacheKey(@NotNull Long id);
 }

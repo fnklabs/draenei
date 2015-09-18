@@ -65,12 +65,12 @@ public class TestEntity implements Cacheable {
 
     @Nullable
     @Override
-    public Long getCacheId() {
+    public Long getCacheKey() {
         return null;
     }
 
     @Override
-    public void setCacheId(@NotNull Long id) {
+    public void setCacheKey(@NotNull Long id) {
 
     }
 }

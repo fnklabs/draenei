@@ -13,8 +13,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 
 public class CassandraClient {
+    public static final int RECONNECTION_DELAY_TIME = 5000;
     /**
      * Read timeout in ms
      */
@@ -23,10 +25,7 @@ public class CassandraClient {
      * Read timeout in ms
      */
     private static final int CONNECT_TIMEOUT_MILLIS = 30000;
-
-
     private static final Logger LOGGER = LoggerFactory.getLogger(CassandraClient.class);
-
     /**
      * Cassandra cluster instance
      */
@@ -35,16 +34,16 @@ public class CassandraClient {
     /**
      * Prepared statements map that allow solve problem with several prepared statements execution is same query
      */
-    private final ConcurrentHashMap<String, PreparedStatement> preparedStatementConcurrentHashMap = new ConcurrentHashMap<String, PreparedStatement>();
+    private final ConcurrentHashMap<String, PreparedStatement> preparedStatementsMap = new ConcurrentHashMap<String, PreparedStatement>();
 
     /**
      * Cassandra session instance
      */
-    private Session session;
+    private final Session session;
 
-    private ListeningExecutorService executorService;
+    private final ListeningExecutorService executorService;
 
-    private MetricsFactory metricsFactory;
+    private final MetricsFactory metricsFactory;
 
     /**
      * Construct cassandra client
@@ -70,23 +69,22 @@ public class CassandraClient {
         this.metricsFactory = metricsFactory;
         this.executorService = executorService;
 
-        LOGGER.info("Cassandra nodes: " + hosts);
-
         Cluster.Builder builder = Cluster.builder()
                                          .withPort(9042)
                                          .withProtocolVersion(ProtocolVersion.NEWEST_SUPPORTED)
                                          .withQueryOptions(getQueryOptions())
                                          .withRetryPolicy(new LoggingRetryPolicy(FallthroughRetryPolicy.INSTANCE))
                                          .withLoadBalancingPolicy(getLoadBalancingPolicy(hostDistance))
-                                         .withReconnectionPolicy(new ConstantReconnectionPolicy(5000))
+                                         .withReconnectionPolicy(new ConstantReconnectionPolicy(RECONNECTION_DELAY_TIME))
                                          .withSocketOptions(getSocketOptions());
 
         if (!StringUtils.isEmpty(username) && !StringUtils.isEmpty(password)) {
             builder = builder.withCredentials(username, password);
         }
 
-
         String[] hostList = StringUtils.split(hosts, ",");
+
+        LOGGER.info("Cassandra nodes: {}", hostList);
 
         for (String host : hostList) {
             builder.addContactPoint(host);
@@ -107,20 +105,26 @@ public class CassandraClient {
             LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
         }
 
-        createSession(keyspace);
+        cluster.init();
+
+        session = createSession(cluster, keyspace);
     }
 
-    public KeyspaceMetadata getKeyspaceMetadata(String keyspace) {
+    @NotNull
+    public KeyspaceMetadata getKeyspaceMetadata(@NotNull String keyspace) {
         return cluster.getMetadata().getKeyspace(keyspace);
     }
 
-    public TableMetadata getTableMetadata(String tablename) {
+    @NotNull
+    public TableMetadata getTableMetadata(@NotNull String tablename) {
         return getKeyspaceMetadata(getSession().getLoggedKeyspace()).getTable(tablename);
     }
 
-    public TableMetadata getTableMetadata(String keyspace, String tablename) {
+    @NotNull
+    public TableMetadata getTableMetadata(@NotNull String keyspace, @NotNull String tablename) {
         return getKeyspaceMetadata(keyspace).getTable(tablename);
     }
+
 
     public void dumpMetrics() {
         Metrics metrics = cluster.getMetrics();
@@ -158,23 +162,9 @@ public class CassandraClient {
         LOGGER.warn("Active statements: {}", getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).getCount());
     }
 
-    public void createSession(String keyspace) {
-        cluster.init();
-        if (null == session) {
-            session = cluster.connect(keyspace);
-            session.init();
-        }
-    }
-
-    synchronized public PreparedStatement prepare(String query) {
-        if (preparedStatementConcurrentHashMap.containsKey(query)) {
-            return preparedStatementConcurrentHashMap.get(query);
-        }
-
-        PreparedStatement preparedStatement = getSession().prepare(query);
-
-        preparedStatementConcurrentHashMap.put(query, preparedStatement);
-        return preparedStatement;
+    @NotNull
+    public PreparedStatement prepare(@NotNull String query) {
+        return preparedStatementsMap.compute(query, new ComputePreparedStatement());
     }
 
     public ResultSet execute(String query) {
@@ -191,7 +181,9 @@ public class CassandraClient {
 
         ResultSetFuture resultSetFuture = getSession().executeAsync(query);
         Futures.addCallback(resultSetFuture, new StatementExecutionCallback(query), executorService);
+
         monitorFuture(time, resultSetFuture);
+
         return resultSetFuture;
     }
 
@@ -216,7 +208,6 @@ public class CassandraClient {
         session.close();
         cluster.close();
     }
-
 
     /**
      * Get Cluster session
@@ -247,6 +238,21 @@ public class CassandraClient {
         monitorFuture(time, resultSetFuture);
 
         return resultSetFuture;
+    }
+
+    /**
+     * Create session
+     *
+     * @param cluster  Cluster instance
+     * @param keyspace Default keyspace
+     *
+     * @return Session instance
+     */
+    private Session createSession(@NotNull Cluster cluster, @NotNull String keyspace) {
+        Session session = cluster.connect(keyspace);
+        session.init();
+
+        return session;
     }
 
     private MetricsFactory getMetricsFactory() {
@@ -303,7 +309,20 @@ public class CassandraClient {
         });
 
         LatencyAwarePolicy latencyAwarePolicy = latencyPolicyBuilder.build();
+
         return new TokenAwarePolicy(latencyAwarePolicy);
+    }
+
+    private class ComputePreparedStatement implements BiFunction<String, PreparedStatement, PreparedStatement> {
+
+        @Override
+        public PreparedStatement apply(String s, PreparedStatement preparedStatement) {
+            if (preparedStatement == null) {
+                preparedStatement = getSession().prepare(s);
+            }
+
+            return preparedStatement;
+        }
     }
 
     private class StatementExecutionCallback implements FutureCallback<ResultSet> {
@@ -315,7 +334,6 @@ public class CassandraClient {
 
         @Override
         public void onSuccess(ResultSet result) {
-//            LOGGER.debug("Complete: {}", stopWatch);
             decrementActiveStatements();
         }
 

@@ -3,7 +3,7 @@ package com.fnklabs.draenei.orm;
 import com.codahale.metrics.Timer;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.MetricsFactory;
-import com.google.common.hash.Funnel;
+import com.fnklabs.draenei.orm.exception.CanNotBuildEntryCacheKey;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.*;
@@ -11,11 +11,18 @@ import com.hazelcast.core.ExecutionCallback;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.core.IMap;
-import com.hazelcast.map.EntryProcessor;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.concurrent.Future;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 
 public abstract class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
@@ -29,13 +36,18 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
      */
     private final IMap<Long, T> dataGrid;
 
+    private final EventListener<T> eventListener;
+
     public CacheableDataProvider(Class<T> clazz,
                                  CassandraClient cassandraClient,
                                  HazelcastInstance hazelcastClient,
                                  MetricsFactory metricsFactory,
+                                 EventListener<T> eventListener,
                                  ListeningExecutorService executorService) {
 
         super(clazz, cassandraClient, metricsFactory, executorService);
+
+        this.eventListener = eventListener;
 
         /**
          * Initialize dataGrid
@@ -47,31 +59,37 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
     public ListenableFuture<T> findOneAsync(Object... keys) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND).time();
 
-        long entityId = buildEntityId(keys);
+        long cacheKey = buildCacheKey(keys);
 
-        ListenableFuture<T> findEntityFuture = Futures.transform(getFromDataGrid(entityId), (T result) -> {
+        ListenableFuture<T> getFromDataGridFuture = getFromDataGrid(cacheKey);
+
+        ListenableFuture<T> findEntityFuture = Futures.transform(getFromDataGridFuture, (T result) -> {
 
             if (result != null) {
                 getMetricsFactory().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS).inc();
 
-                SettableFuture<T> resultFuture = SettableFuture.<T>create();
-                resultFuture.set(result);
-
-                return resultFuture;
+                return getFromDataGridFuture;
             }
 
             // try to load entity from DB
             ListenableFuture<T> findFuture = super.findOneAsync(keys);
 
-            return Futures.transform(findFuture, (T entity) -> {
-                if (entity != null) {
-                    entity.setCacheId(entityId);
-                    getMap().putAsync(entityId, entity);
+            Futures.addCallback(findFuture, new FutureCallback<T>() {
+                @Override
+                public void onSuccess(T result) {
+                    if (result != null) {
+                        result.setCacheKey(cacheKey);
+                        getMap().putAsync(cacheKey, result);
+                    }
                 }
 
-                return entity;
+                @Override
+                public void onFailure(Throwable t) {
+                    LOGGER.warn("Can't put to cache", t);
+                }
             }, getExecutorService());
 
+            return findFuture;
         }, getExecutorService());
 
         monitorFuture(time, findEntityFuture);
@@ -83,97 +101,68 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
     public ListenableFuture<Boolean> saveAsync(@NotNull T entity) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_SAVE).time();
 
-        ListenableFuture<Boolean> saveToDataGridFuture = executeOnEntry(entity, new AddToCacheOperation<>(entity));
+        Long cacheKey = entity.getCacheKey() == null ? buildCacheKey(entity) : entity.getCacheKey();
 
-        monitorFuture(time, saveToDataGridFuture, result -> {
-            if (result) {
-                super.saveAsync(entity);
-                onEntrySave(entity);
+        ICompletableFuture<T> future = (ICompletableFuture<T>) getMap().putAsync(cacheKey, entity);
+
+        SettableFuture<Boolean> saveFuture = SettableFuture.<Boolean>create();
+
+        future.andThen(new ExecutionCallback<T>() {
+            @Override
+            public void onResponse(T response) {
+                saveFuture.set(true);
             }
+
+            @Override
+            public void onFailure(Throwable t) {
+                saveFuture.setException(t);
+            }
+        }, getExecutorService());
+
+        monitorFuture(time, saveFuture, result -> {
+            ListenableFuture<Boolean> saveAsyncFuture = super.saveAsync(entity);
+
+            getExecutorService().submit(() -> eventListener.onEntrySave(entity));
+
+            return saveAsyncFuture;
         });
 
-        return saveToDataGridFuture;
+        return saveFuture;
     }
 
     @Override
     public ListenableFuture<Boolean> removeAsync(@NotNull T entity) {
 
-        ListenableFuture<Boolean> submit = getExecutorService().submit(() -> {
-            Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE).time();
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE).time();
 
-            long key = entity.getCacheId() == null ? buildEntityId(entity) : entity.getCacheId();
+        long key = entity.getCacheKey() == null ? buildCacheKey(entity) : entity.getCacheKey();
 
-//        ListenableFuture<T> removeFuture = JdkFutureAdapters.listenInPoolThread(dataGrid.removeAsync(key), getExecutorService());
-            getMap().remove(key);
-            onEntryRemove(entity);
-            super.removeAsync(entity);
+        SettableFuture<Boolean> deleteFuture = SettableFuture.<Boolean>create();
 
-            timer.stop();
+        ICompletableFuture<T> removeFromDataGridFuture = (ICompletableFuture<T>) getMap().removeAsync(key);
 
-            return true;
+        removeFromDataGridFuture.andThen(new ExecutionCallback<T>() {
+            @Override
+            public void onResponse(T response) {
+                deleteFuture.set(true);
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                deleteFuture.setException(t);
+            }
         });
 
-        SettableFuture<Boolean> settableFuture = SettableFuture.<Boolean>create();
-        settableFuture.set(true);
-        return settableFuture;
-    }
+        monitorFuture(timer, deleteFuture, result -> {
+            ListenableFuture<Boolean> removeFuture = super.removeAsync(entity);
 
-    /**
-     * Notification when entry was removed
-     *
-     * @param entity Entity that must be removed
-     */
-    protected void onEntryRemove(T entity) {
+            getExecutorService().submit(() -> eventListener.onEntryRemove(entity));
 
-    }
-
-    protected void onEntrySave(T entity) {
-
-    }
-
-    /**
-     * Execute function on entry
-     *
-     * @param entry          Entry
-     * @param entryProcessor User Function
-     *
-     * @return Future for current operation
-     */
-    protected ListenableFuture<Boolean> executeOnEntry(@NotNull T entry, @NotNull EntryProcessor<String, T> entryProcessor) {
-        SettableFuture<Boolean> booleanSettableFuture = SettableFuture.<Boolean>create();
-
-        Long entityId = entry.getCacheId() == null ? buildEntityId(entry) : entry.getCacheId();
-
-        getExecutorService().submit(() -> {
-            getMap().submitToKey(entityId, entryProcessor, new ExecutionCallback() {
-                @Override
-                public void onResponse(Object response) {
-                    booleanSettableFuture.set(true);
-                }
-
-                @Override
-                public void onFailure(Throwable t) {
-                    booleanSettableFuture.set(false);
-                }
-            });
-
+            return removeFuture;
         });
 
-        return booleanSettableFuture;
+        return deleteFuture;
     }
-
-    protected long buildEntityId(@NotNull T entity) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_CREATE_KEY).time();
-
-        long key = buildEntityId(entity, getFunnel());
-
-        time.stop();
-        return key;
-    }
-
-    protected abstract long buildEntityId(@NotNull Object... keys);
-
-    abstract protected Funnel<T> getFunnel();
 
     @NotNull
     protected String getMapName() {
@@ -184,36 +173,99 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         return dataGrid;
     }
 
-    @NotNull
-    private ListenableFuture<T> getFromDataGrid(long entityId) {
-        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_GET_FROM_DATA_GRID).time();
-        // try to find entity in DataGrid then try to load it from DB
-        Future<T> future = getMap().getAsync(entityId);
+    private long buildCacheKey(@NotNull T entity) {
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_CREATE_KEY).time();
 
-        if (future instanceof ICompletableFuture) {
-            SettableFuture<T> responseFuture = SettableFuture.<T>create();
+        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
-            ((ICompletableFuture<T>) future).andThen(new ExecutionCallback<T>() {
-                @Override
-                public void onResponse(T response) {
-                    timer.stop();
-                    responseFuture.set(response);
+        List<Object> keys = new ArrayList<>();
+
+        for (int i = 0; i < primaryKeysSize; i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (primaryKey.isPresent()) {
+                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+                Method readMethod = primaryKeyMetadata.getReadMethod();
+
+                try {
+                    Object value = readMethod.invoke(entity);
+                    keys.add(value);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    LOGGER.warn(String.format("Can't invoke read method: %s#%s", entity.getClass(), readMethod.getName()), e);
                 }
-
-                @Override
-                public void onFailure(Throwable t) {
-                    timer.stop();
-                    responseFuture.setException(t);
-                }
-            }, getExecutorService());
+            }
         }
 
-        return JdkFutureAdapters.listenInPoolThread(future, getExecutorService());
+        long cacheKey = buildCacheKey(keys);
+
+        time.stop();
+
+        return cacheKey;
+    }
+
+    /**
+     * Build cache key
+     *
+     * @param keys Entity keys
+     *
+     * @return Cache key
+     */
+    private long buildCacheKey(Object... keys) {
+        ArrayList<Object> keyList = new ArrayList<>();
+
+        Collections.addAll(keyList, keys);
+
+        return buildCacheKey(keyList);
+    }
+
+    private long buildCacheKey(List<Object> keys) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
+
+            for (Object key : keys) {
+                objectOutputStream.writeObject(key);
+            }
+
+            return HASH_FUNCTION.hashBytes(out.toByteArray()).asLong();
+
+        } catch (IOException e) {
+            LOGGER.warn("Can't ");
+
+            throw new CanNotBuildEntryCacheKey(getEntityClass(), e);
+        }
     }
 
     @NotNull
     private String getMapName(Class<T> clazz) {
         return StringUtils.lowerCase(clazz.getName());
+    }
+
+    @NotNull
+    private ListenableFuture<T> getFromDataGrid(long cacheKey) {
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_GET_FROM_DATA_GRID).time();
+        // try to find entity in DataGrid then try to load it from DB
+        ICompletableFuture<T> future = (ICompletableFuture<T>) getMap().getAsync(cacheKey);
+
+        SettableFuture<T> responseFuture = SettableFuture.<T>create();
+
+        future.andThen(new ExecutionCallback<T>() {
+            @Override
+            public void onResponse(T response) {
+                timer.stop();
+                responseFuture.set(response);
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                timer.stop();
+                responseFuture.setException(t);
+            }
+        }, getExecutorService());
+
+        return responseFuture;
+
     }
 
     protected enum MetricsType implements MetricsFactory.Type {
@@ -223,9 +275,5 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         CACHEABLE_DATA_PROVIDER_HITS,
         CACHEABLE_DATA_PROVIDER_REMOVE, CACHEABLE_DATA_GET_FROM_DATA_GRID;
 
-    }
-
-    private static <T> long buildEntityId(T entity, Funnel<T> funnel) {
-        return HASH_FUNCTION.hashObject(entity, funnel).asLong();
     }
 }
