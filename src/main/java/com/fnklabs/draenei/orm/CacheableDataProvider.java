@@ -231,7 +231,7 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         return dataGrid;
     }
 
-    private long buildCacheKey(@NotNull T entity) {
+    protected final long buildCacheKey(@NotNull T entity) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_CREATE_KEY).time();
 
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
@@ -269,7 +269,7 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
      *
      * @return Cache key
      */
-    private long buildCacheKey(Object... keys) {
+    protected final long buildCacheKey(Object... keys) {
         ArrayList<Object> keyList = new ArrayList<>();
 
         Collections.addAll(keyList, keys);
