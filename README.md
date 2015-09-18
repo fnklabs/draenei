@@ -1,7 +1,7 @@
 # draenei
 Another one ORM for Cassandra but with distributed cache and analytics utils from package
 
-Project exists R&D mode
+Project exists in R&D mode
 
 ## Add to your project 
 
