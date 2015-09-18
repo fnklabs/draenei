@@ -3,7 +3,6 @@ package com.fnklabs.draenei;
 import com.codahale.metrics.Timer;
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.policies.*;
-import com.ecyrd.speed4j.StopWatch;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListeningExecutorService;
@@ -84,7 +83,7 @@ public class CassandraClient {
 
         String[] hostList = StringUtils.split(hosts, ",");
 
-        LOGGER.info("Cassandra nodes: {}", hostList);
+        LOGGER.info("Cassandra nodes: {}", hosts);
 
         for (String host : hostList) {
             builder.addContactPoint(host);
@@ -326,10 +325,10 @@ public class CassandraClient {
     }
 
     private class StatementExecutionCallback implements FutureCallback<ResultSet> {
-        private StopWatch stopWatch;
+        private final String query;
 
         public StatementExecutionCallback(String query) {
-            this.stopWatch = new StopWatch(query);
+            this.query = query;
         }
 
         @Override
@@ -339,7 +338,7 @@ public class CassandraClient {
 
         @Override
         public void onFailure(Throwable t) {
-            LOGGER.warn("Cant execute bound statement. " + stopWatch.toString(), t);
+            LOGGER.warn("Cant execute bound statement: " + query, t);
 
             getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_ERRORS).inc();
             decrementActiveStatements();
