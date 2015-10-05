@@ -1,7 +1,24 @@
 package com.fnklabs.draenei.orm;
 
-public interface EventListener<T> {
-    void onEntrySave(T entry);
+import org.jetbrains.annotations.NotNull;
 
-    void onEntryRemove(T entry);
+/**
+ * Cacheable DataProvider EventListener
+ *
+ * @param <T>
+ */
+public interface EventListener<T> {
+    /**
+     * Called on after save new entry
+     *
+     * @param entry new entry
+     */
+    void onEntrySave(@NotNull T entry);
+
+    /**
+     * Called on after remove new entry
+     *
+     * @param entry new entry
+     */
+    void onEntryRemove(@NotNull T entry);
 }

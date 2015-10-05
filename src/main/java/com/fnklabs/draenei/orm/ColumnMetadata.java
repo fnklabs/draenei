@@ -4,14 +4,19 @@ package com.fnklabs.draenei.orm;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Method;
 
-class FieldMetadata<T> {
-    private PropertyDescriptor propertyDescriptor;
-    private Class<T> type;
-    private String name;
-    private Method readMethod;
-    private Method writeMethod;
+/**
+ * Column metadata
+ *
+ * @param <T> Column java class type
+ */
+class ColumnMetadata<T> {
+    private final PropertyDescriptor propertyDescriptor;
+    private final Class<T> type;
+    private final String name;
+    private final Method readMethod;
+    private final Method writeMethod;
 
-    public FieldMetadata(PropertyDescriptor propertyDescriptor, Class<T> type, String name) {
+    public ColumnMetadata(PropertyDescriptor propertyDescriptor, Class<T> type, String name) {
         this.propertyDescriptor = propertyDescriptor;
 
         readMethod = propertyDescriptor.getReadMethod();
@@ -29,16 +34,16 @@ class FieldMetadata<T> {
         return writeMethod;
     }
 
-    private PropertyDescriptor getPropertyDescriptor() {
-        return propertyDescriptor;
-    }
-
     public Class<T> getType() {
         return type;
     }
 
     public String getName() {
         return name;
+    }
+
+    private PropertyDescriptor getPropertyDescriptor() {
+        return propertyDescriptor;
     }
 
 

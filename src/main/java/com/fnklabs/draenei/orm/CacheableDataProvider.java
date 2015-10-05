@@ -14,6 +14,9 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.map.EntryProcessor;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,61 +28,54 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-public abstract class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
+public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
     /**
      * hashing function to build Entity cache id
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
+    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
 
     /**
      * Distributed object dataGrid
      */
+    @NotNull
     private final IMap<Long, T> dataGrid;
 
+    @Nullable
     private final EventListener<T> eventListener;
 
     public CacheableDataProvider(Class<T> clazz,
                                  CassandraClient cassandraClient,
-                                 HazelcastInstance hazelcastClient,
+                                 HazelcastInstance hazelcastInstance,
                                  MetricsFactory metricsFactory,
-                                 EventListener<T> eventListener,
+                                 @Nullable EventListener<T> eventListener,
                                  ListeningExecutorService executorService) {
 
-        super(clazz, cassandraClient, metricsFactory, executorService);
+        super(clazz, cassandraClient, hazelcastInstance, metricsFactory, executorService);
 
         this.eventListener = eventListener;
 
         /**
          * Initialize dataGrid
          */
-        dataGrid = hazelcastClient.<Long, T>getMap(getMapName(clazz));
+        dataGrid = hazelcastInstance.<Long, T>getMap(getMapName(clazz));
     }
 
     public CacheableDataProvider(Class<T> clazz,
                                  CassandraClient cassandraClient,
-                                 HazelcastInstance hazelcastClient,
+                                 HazelcastInstance hazelcastInstance,
                                  MetricsFactory metricsFactory,
                                  ListeningExecutorService executorService) {
 
-        super(clazz, cassandraClient, metricsFactory, executorService);
+        super(clazz, cassandraClient, hazelcastInstance, metricsFactory, executorService);
 
-        this.eventListener = new EventListener<T>() {
-            @Override
-            public void onEntrySave(T entry) {
-
-            }
-
-            @Override
-            public void onEntryRemove(T entry) {
-
-            }
-        };
+        this.eventListener = null;
 
         /**
          * Initialize dataGrid
          */
-        dataGrid = hazelcastClient.<Long, T>getMap(getMapName(clazz));
+        dataGrid = hazelcastInstance.<Long, T>getMap(getMapName(clazz));
     }
 
 
@@ -118,7 +114,7 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
             }, getExecutorService());
 
             return findFuture;
-        }, getExecutorService());
+        });
 
         monitorFuture(time, findEntityFuture);
 
@@ -129,33 +125,31 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
     public ListenableFuture<Boolean> saveAsync(@NotNull T entity) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_SAVE).time();
 
-        Long cacheKey = entity.getCacheKey() == null ? buildCacheKey(entity) : entity.getCacheKey();
+        Timer.Context putAsyncTimer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_ASYNC).time();
 
-        ICompletableFuture<T> future = (ICompletableFuture<T>) getMap().putAsync(cacheKey, entity);
+        ListenableFuture<Boolean> putToCacheFuture = executeOnEntry(entity, new PutToCacheOperation<Long, T>(entity));
 
-        SettableFuture<Boolean> saveFuture = SettableFuture.<Boolean>create();
+        monitorFuture(putAsyncTimer, putToCacheFuture);
 
-        future.andThen(new ExecutionCallback<T>() {
+        ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (Boolean result) -> {
+            return super.saveAsync(entity);
+        }, getExecutorService());
+
+        Futures.addCallback(saveFuture, new FutureCallback<Boolean>() {
             @Override
-            public void onResponse(T response) {
-                saveFuture.set(true);
+            public void onSuccess(@Nullable Boolean result) {
+                if (result != null && result && eventListener != null) {
+                    eventListener.onEntrySave(entity);
+                }
             }
 
             @Override
             public void onFailure(Throwable t) {
-                saveFuture.setException(t);
+                LOGGER.warn("Cant save entry", t);
             }
         }, getExecutorService());
 
-        monitorFuture(time, saveFuture, result -> {
-            ListenableFuture<Boolean> saveAsyncFuture = super.saveAsync(entity);
-
-            getExecutorService().submit(() -> eventListener.onEntrySave(entity));
-
-            return saveAsyncFuture;
-        });
-
-        return saveFuture;
+        return monitorFuture(time, saveFuture, result -> result);
     }
 
     @Override
@@ -184,7 +178,9 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         monitorFuture(timer, deleteFuture, result -> {
             ListenableFuture<Boolean> removeFuture = super.removeAsync(entity);
 
-            getExecutorService().submit(() -> eventListener.onEntryRemove(entity));
+            if (eventListener != null) {
+                getExecutorService().submit(() -> eventListener.onEntryRemove(entity));
+            }
 
             return removeFuture;
         });
@@ -197,19 +193,20 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
      *
      * @param entry          Entry
      * @param entryProcessor User Function
+     * @param <O>            Return object type from EntryProcessor
      *
      * @return Future for current operation
      */
-    protected ListenableFuture<Boolean> executeOnEntry(@NotNull T entry, @NotNull EntryProcessor<Long, T> entryProcessor) {
+    protected <O> ListenableFuture<O> executeOnEntry(@NotNull T entry, @NotNull EntryProcessor<Long, T> entryProcessor) {
         Long entityId = entry.getCacheKey() == null ? buildCacheKey(entry) : entry.getCacheKey();
 
-        ICompletableFuture<Boolean> completableFuture = (ICompletableFuture<Boolean>) getMap().submitToKey(entityId, entryProcessor);
+        ICompletableFuture<O> completableFuture = (ICompletableFuture<O>) getMap().submitToKey(entityId, entryProcessor);
 
-        SettableFuture<Boolean> responseFuture = SettableFuture.<Boolean>create();
+        SettableFuture<O> responseFuture = SettableFuture.<O>create();
 
-        completableFuture.andThen(new ExecutionCallback<Boolean>() {
+        completableFuture.andThen(new ExecutionCallback<O>() {
             @Override
-            public void onResponse(Boolean response) {
+            public void onResponse(O response) {
                 responseFuture.set(response);
             }
 
@@ -331,7 +328,7 @@ public abstract class CacheableDataProvider<T extends Cacheable> extends DataPro
         CACHEABLE_DATA_PROVIDER_SAVE,
         CACHEABLE_DATA_PROVIDER_CREATE_KEY,
         CACHEABLE_DATA_PROVIDER_HITS,
-        CACHEABLE_DATA_PROVIDER_REMOVE, CACHEABLE_DATA_GET_FROM_DATA_GRID;
+        CACHEABLE_DATA_PROVIDER_REMOVE, CACHEABLE_DATA_GET_FROM_DATA_GRID, CACHEABLE_DATA_PROVIDER_PUT_ASYNC;
 
     }
 }
