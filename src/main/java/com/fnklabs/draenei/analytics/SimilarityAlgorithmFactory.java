@@ -2,8 +2,6 @@ package com.fnklabs.draenei.analytics;
 
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
@@ -12,7 +10,6 @@ import java.util.Map;
 /**
  * Factory for retrieving similarity algorithm
  */
-@Service
 final class SimilarityAlgorithmFactory {
 
     /**
@@ -20,7 +17,6 @@ final class SimilarityAlgorithmFactory {
      */
     private final Map<String, SimilarityAlgorithm> algorithms = new HashMap<>();
 
-    @Autowired
     public SimilarityAlgorithmFactory(List<SimilarityAlgorithm> similarityAlgorithmList) {
         similarityAlgorithmList.forEach(algorithm -> {
             getAlgorithms().put(algorithm.getClass().getName(), algorithm);

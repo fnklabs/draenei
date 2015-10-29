@@ -1,7 +1,6 @@
 package com.fnklabs.draenei.analytics;
 
 import org.jetbrains.annotations.NotNull;
-import tv.nemo.content.entity.ContentInformation;
 
 import java.util.Set;
 
@@ -18,7 +17,7 @@ interface ClusteringAlgorithm {
      * @return Set of facets
      */
     @NotNull
-    Set<Facet> build(@NotNull ContentInformation platformContent);
+    Set<Facet> build(@NotNull Object platformContent);
 
     /**
      * Build facets from text for search

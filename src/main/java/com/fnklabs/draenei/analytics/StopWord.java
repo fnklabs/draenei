@@ -1,18 +1,19 @@
 package com.fnklabs.draenei.analytics;
 
-import com.fnklabs.draenei.orm.annotations.ClusteringKey;
+import com.fnklabs.draenei.orm.Cacheable;
 import com.fnklabs.draenei.orm.annotations.Column;
+import com.fnklabs.draenei.orm.annotations.PrimaryKey;
 import com.fnklabs.draenei.orm.annotations.Table;
-import com.google.gson.annotations.Expose;
-import tv.nemo.entity.CacheableEntity;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 @Table(name = "stop_word")
-public class StopWord extends CacheableEntity {
+public class StopWord implements Cacheable {
 
-    @ClusteringKey
+    @PrimaryKey
     @Column(name = "stop_word")
     private String stopWord;
-    @Expose
+
     private Long cacheId;
 
     public StopWord() {
@@ -31,4 +32,14 @@ public class StopWord extends CacheableEntity {
     }
 
 
+    @Nullable
+    @Override
+    public Long getCacheKey() {
+        return null;
+    }
+
+    @Override
+    public void setCacheKey(@NotNull Long id) {
+
+    }
 }

@@ -1,65 +1,66 @@
 package com.fnklabs.draenei.analytics;
 
 import com.codahale.metrics.Timer;
+import com.fnklabs.draenei.MetricsFactory;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import org.jetbrains.annotations.NotNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import tv.nemo.content.dao.StopWordsDao;
-import tv.nemo.core.Metrics;
 
 import java.io.IOException;
 import java.util.Set;
 
-@Service
+/**
+ * Cacheable version of {@link TextUtils}
+ */
 class CacheableTextUtils extends TextUtils {
+
+    private final MetricsFactory metricsFactory;
 
     private final LoadingCache<String, Boolean> IS_NORMAL_WORD_CACHE = CacheBuilder.newBuilder()
                                                                                    .maximumSize(50000)
-                                                                                   .<String, Boolean>build(new CacheLoader<String, Boolean>() {
-                                                                                       @Override
-                                                                                       public Boolean load(@NotNull String key) throws Exception {
-                                                                                           return CacheableTextUtils.super.isNormalWord(key);
-                                                                                       }
-                                                                                   });
+            .<String, Boolean>build(new CacheLoader<String, Boolean>() {
+                @Override
+                public Boolean load(@NotNull String key) throws Exception {
+                    return CacheableTextUtils.super.isNormalWord(key, MorphologyFactory.Language.RU);
+                }
+            });
 
     private final LoadingCache<String, Set<String>> NORMAL_FORMS_OF_WORD_CACHE = CacheBuilder.newBuilder()
                                                                                              .maximumSize(50000)
-                                                                                             .<String, Set<String>>build(new CacheLoader<String, Set<String>>() {
-                                                                                                 @Override
-                                                                                                 public Set<String> load(@NotNull String key) throws Exception {
-                                                                                                     return CacheableTextUtils.super.getNormalForms(key);
-                                                                                                 }
-                                                                                             });
+            .<String, Set<String>>build(new CacheLoader<String, Set<String>>() {
+                @Override
+                public Set<String> load(@NotNull String key) throws Exception {
+                    return CacheableTextUtils.super.getNormalForms(key, MorphologyFactory.Language.RU);
+                }
+            });
 
     private final LoadingCache<String, Boolean> IS_STOP_WORD = CacheBuilder.newBuilder()
                                                                            .maximumSize(10000)
-                                                                           .<String, Boolean>build(new CacheLoader<String, Boolean>() {
-                                                                               @Override
-                                                                               public Boolean load(@NotNull String key) throws Exception {
-                                                                                   return CacheableTextUtils.super.isStopWord(key);
-                                                                               }
-                                                                           });
+            .<String, Boolean>build(new CacheLoader<String, Boolean>() {
+                @Override
+                public Boolean load(@NotNull String key) throws Exception {
+                    return CacheableTextUtils.super.isStopWord(key);
+                }
+            });
 
-    @Autowired
-    public CacheableTextUtils(StopWordsDao stopWordsDao) throws IOException {
-        super(stopWordsDao);
+    public CacheableTextUtils(StopWordsDao stopWordsDao, MetricsFactory metricsFactory, MorphologyFactory morphologyFactory) throws IOException {
+        super(morphologyFactory, stopWordsDao, metricsFactory);
+        this.metricsFactory = metricsFactory;
     }
 
     @Override
-    public Set<String> getNormalForms(String word) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.CACHEABLE_TEXT_UTILS_GET_NORMAL_FORMS).time();
-        Set<String> unchecked = NORMAL_FORMS_OF_WORD_CACHE.getUnchecked(word);
+    public Set<String> getNormalForms(String word, MorphologyFactory.Language language) {
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_TEXT_UTILS_GET_NORMAL_FORMS).time();
+        Set<String> normalFormsOfWord = NORMAL_FORMS_OF_WORD_CACHE.getUnchecked(word);
         timer.stop();
 
-        return unchecked;
+        return normalFormsOfWord;
     }
 
     @Override
     protected boolean isStopWord(@NotNull String token) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.CACHEABLE_TEXT_UTILS_IS_STOP_WORD).time();
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_TEXT_UTILS_IS_STOP_WORD).time();
 
         boolean isStopWord = IS_STOP_WORD.getUnchecked(token);
 
@@ -69,8 +70,8 @@ class CacheableTextUtils extends TextUtils {
     }
 
     @Override
-    protected boolean isNormalWord(String word) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.CACHEABLE_TEXT_UTILS_IS_NORMAL_WORD).time();
+    protected boolean isNormalWord(String word, MorphologyFactory.Language language) {
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_TEXT_UTILS_IS_NORMAL_WORD).time();
 
         Boolean result = IS_NORMAL_WORD_CACHE.getUnchecked(word);
         timer.stop();
@@ -78,9 +79,13 @@ class CacheableTextUtils extends TextUtils {
         return result;
     }
 
-    private enum MetricsType implements Metrics.Type {
-        CACHEABLE_TEXT_UTILS_GET_NORMAL_FORMS, CACHEABLE_TEXT_UTILS_IS_STOP_WORD, CACHEABLE_TEXT_UTILS_IS_NORMAL_WORD
+    private MetricsFactory getMetricsFactory() {
+        return metricsFactory;
     }
 
-
+    private enum MetricsType implements MetricsFactory.Type {
+        CACHEABLE_TEXT_UTILS_GET_NORMAL_FORMS,
+        CACHEABLE_TEXT_UTILS_IS_STOP_WORD,
+        CACHEABLE_TEXT_UTILS_IS_NORMAL_WORD
+    }
 }

@@ -1,19 +1,15 @@
 package com.fnklabs.draenei.analytics;
 
 import com.codahale.metrics.Timer;
+import com.fnklabs.draenei.MetricsFactory;
 import com.google.common.util.concurrent.Futures;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.lucene.morphology.EnglishLuceneMorphology;
-import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+import org.apache.lucene.morphology.Morphology;
+import org.apache.lucene.morphology.WrongCharaterException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import tv.nemo.content.dao.StopWordsDao;
-import tv.nemo.content.entity.StopWord;
-import tv.nemo.core.Metrics;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,24 +18,29 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Text utils
+ * Text utils that help
+ * - retrieve normal forms of word
+ * - tokenize text
  */
-@Service
 class TextUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(TextUtils.class);
     private static final Set<Character> SPECIAL_CHARACTERS;
-    private final RussianLuceneMorphology russianLuceneMorphology;
-    private final EnglishLuceneMorphology englishLuceneMorphology;
 
+    private final MorphologyFactory morphologyFactory;
+    private final MetricsFactory metricsFactory;
+    private final StopWordsDao stopWordsDao;
 
-    private StopWordsDao stopWordsDao;
-
-
-    @Autowired
-    public TextUtils(StopWordsDao stopWordsDao) throws IOException {
+    /**
+     * @param morphologyFactory
+     * @param stopWordsDao
+     * @param metricsFactory
+     *
+     * @throws IOException
+     */
+    public TextUtils(MorphologyFactory morphologyFactory, StopWordsDao stopWordsDao, MetricsFactory metricsFactory) throws IOException {
+        this.morphologyFactory = morphologyFactory;
         this.stopWordsDao = stopWordsDao;
-        this.russianLuceneMorphology = new RussianLuceneMorphology();
-        this.englishLuceneMorphology = new EnglishLuceneMorphology();
+        this.metricsFactory = metricsFactory;
     }
 
     /**
@@ -49,18 +50,20 @@ class TextUtils {
      *
      * @return Set of normal forms
      */
-    public Set<String> getNormalForms(String word) {
+    @NotNull
+    public Set<String> getNormalForms(String word, MorphologyFactory.Language language) {
 
-        Timer.Context timer = Metrics.getTimer(MetricsType.TEXT_UTILS_GET_NORMAL_FORMS).time();
+        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_GET_NORMAL_FORMS).time();
 
         Set<String> normalForms = new HashSet<>();
 
-        if (russianLuceneMorphology.checkString(word)) {
-            normalForms.addAll(russianLuceneMorphology.getNormalForms(word));
-        } else if (englishLuceneMorphology.checkString(word)) {
-            normalForms.addAll(englishLuceneMorphology.getNormalForms(word));
-        } else {
-            normalForms.add(word);
+
+        Morphology morphology = morphologyFactory.getMorphology(language);
+
+        try {
+            normalForms.addAll(morphology.getNormalForms(word));
+        } catch (WrongCharaterException e) {
+            LOGGER.warn("Cant get normal form of word", e);
         }
 
         timer.stop();
@@ -75,15 +78,15 @@ class TextUtils {
      *
      * @return List of text token
      */
-    public List<String> tokenizeText(String text) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.TEXT_UTILS_TOKENIZE_TEXT).time();
+    public List<String> tokenizeText(String text, MorphologyFactory.Language language) {
+        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_TOKENIZE_TEXT).time();
 
         if (StringUtils.isEmpty(text)) {
             timer.stop();
             return new ArrayList<>();
         }
 
-        List<String> strings = splitText(text);
+        List<String> strings = splitText(text, language);
 
         timer.stop();
 
@@ -97,39 +100,30 @@ class TextUtils {
      *
      * @return
      */
-    protected boolean isNormalWord(String word) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.TEXT_UTILS_IS_NORMAL_WORD).time();
+    protected boolean isNormalWord(String word, MorphologyFactory.Language language) {
+        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_IS_NORMAL_WORD).time();
 
         try {
             if (StringUtils.isEmpty(word) || StringUtils.startsWith(word, "http://") || StringUtils.startsWith(word, "https://")) {
                 return false;
             }
 
-            if (russianLuceneMorphology.checkString(word)) {
-                Timer.Context morphTimer = Metrics.getTimer(MetricsType.TEXT_UTILS_GET_MORPH_INFO).time();
-                List<String> morphInfo = russianLuceneMorphology.getMorphInfo(word);
-                morphTimer.stop();
+            Timer.Context morphTimer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_GET_MORPH_INFO).time();
+            List<String> morphInfo = morphologyFactory.getMorphology(language).getMorphInfo(word);
+            morphTimer.stop();
 
-                if (StringUtils.contains(morphInfo.get(0), "МЕЖД")
-                        || StringUtils.contains(morphInfo.get(0), "ПРЕДЛ")
-                        || StringUtils.contains(morphInfo.get(0), "ЧАСТ")
-                        || StringUtils.contains(morphInfo.get(0), "МС")
-                        || StringUtils.contains(morphInfo.get(0), "СОЮЗ")) {
-                    return false;
-                }
-            } else if (englishLuceneMorphology.checkString(word)) {
-                Timer.Context morphTimer = Metrics.getTimer(MetricsType.TEXT_UTILS_GET_MORPH_INFO).time();
-                List<String> morphInfo = englishLuceneMorphology.getMorphInfo(word);
-                morphTimer.stop();
-
-
-                if (StringUtils.contains(morphInfo.get(0), "ARTICLE")
-                        || StringUtils.contains(morphInfo.get(0), "PREP")
-                        || StringUtils.contains(morphInfo.get(0), "PN")
-                        || StringUtils.contains(morphInfo.get(0), "CONJ")) {
-                    return false;
-                }
+            if (StringUtils.contains(morphInfo.get(0), "МЕЖД")
+                    || StringUtils.contains(morphInfo.get(0), "ПРЕДЛ")
+                    || StringUtils.contains(morphInfo.get(0), "ЧАСТ")
+                    || StringUtils.contains(morphInfo.get(0), "МС")
+                    || StringUtils.contains(morphInfo.get(0), "СОЮЗ")
+                    || StringUtils.contains(morphInfo.get(0), "ARTICLE")
+                    || StringUtils.contains(morphInfo.get(0), "PREP")
+                    || StringUtils.contains(morphInfo.get(0), "PN")
+                    || StringUtils.contains(morphInfo.get(0), "CONJ")) {
+                return false;
             }
+
         } catch (Exception e) {
             LOGGER.warn("Can't get morph info: {" + word + "} ", e);
         } finally {
@@ -147,7 +141,7 @@ class TextUtils {
      * @return True if token is stop word False otherwise
      */
     protected boolean isStopWord(@NotNull String token) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.TEXT_UTILS_IS_STOP_WORD).time();
+        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_IS_STOP_WORD).time();
         StopWord stopWord = Futures.getUnchecked(stopWordsDao.findOneAsync(token));
         timer.stop();
 
@@ -155,8 +149,8 @@ class TextUtils {
     }
 
     @NotNull
-    private List<String> splitText(String text) {
-        Timer.Context timer = Metrics.getTimer(MetricsType.TEXT_UTILS_SPLIT).time();
+    private List<String> splitText(String text, MorphologyFactory.Language language) {
+        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_SPLIT).time();
 
         List<String> tokens = new ArrayList<>();
 
@@ -168,7 +162,7 @@ class TextUtils {
                 tokenBuilder.append(chr);
             } else if (tokenBuilder.length() > 0) {
                 String token = tokenBuilder.toString();
-                if (isNormalWord(token) && !isStopWord(token) && StringUtils.length(token) > 1) {
+                if (isNormalWord(token, language) && !isStopWord(token) && StringUtils.length(token) > 1) {
                     tokens.add(token.toLowerCase());
                 }
                 tokenBuilder.setLength(0);
@@ -177,7 +171,7 @@ class TextUtils {
 
         if (tokenBuilder.length() > 0) {
             String token = tokenBuilder.toString();
-            if (isNormalWord(token)) {
+            if (isNormalWord(token, language)) {
                 tokens.add(token.toLowerCase());
             }
         }
@@ -187,7 +181,7 @@ class TextUtils {
         return tokens;
     }
 
-    private enum MetricsType implements Metrics.Type {
+    private enum MetricsType implements MetricsFactory.Type {
         TEXT_UTILS_TOKENIZE_TEXT,
         TEXT_UTILS_IS_NORMAL_WORD,
         TEXT_UTILS_FIND_ONE,
@@ -206,6 +200,7 @@ class TextUtils {
 
         return StringUtils.replaceEach(text, searchList, replacementList);
     }
+
 
     static {
         String chars = "/*!@#$%^&*()\\\"{}_:– -[]|\\\\?/<>,.«»—=\r\n\t";

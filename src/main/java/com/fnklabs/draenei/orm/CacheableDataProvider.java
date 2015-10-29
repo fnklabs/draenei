@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -30,12 +31,11 @@ import java.util.Optional;
 
 public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
+    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
     /**
      * hashing function to build Entity cache id
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
-    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
-
     /**
      * Distributed object dataGrid
      */
@@ -280,7 +280,11 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
             ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
 
             for (Object key : keys) {
-                objectOutputStream.writeObject(key);
+                if (objectOutputStream instanceof Serializable) {
+                    objectOutputStream.writeObject(key);
+                }else {
+                    objectOutputStream.writeInt(key.hashCode());
+                }
             }
 
             return HASH_FUNCTION.hashBytes(out.toByteArray()).asLong();

@@ -1,38 +1,37 @@
 package com.fnklabs.draenei.analytics;
 
-import tv.nemo.content.entity.PlatformContent;
 
-enum FacetType {
-    /**
-     * word facet retrieved from content description
-     * see {@link PlatformContent#description}
-     */
-    CONTENT_TEXT,
+import org.jetbrains.annotations.NotNull;
 
+/**
+ * Facet type of object
+ */
+final class FacetType {
+    public static final FacetType TEXT_FACET = new FacetType("text", String.class);
     /**
-     * Content genre
-     * see {@link PlatformContent#genre}
+     * Object facet type name
      */
-    GENRE,
-
-    /**
-     * Content category
-     * <p>
-     * see {@link PlatformContent#category}
-     */
-    CATEGORY,
+    @NotNull
+    private final String name;
 
     /**
-     * Content crew
-     * see {@link PlatformContent#crew}
+     * Object facet type class
      */
-    CREW,
+    @NotNull
+    private final Class type;
 
-    /**
-     * Content type
-     * see {@link PlatformContent#type}
-     */
-    TYPE,
+    public FacetType(@NotNull String name, @NotNull Class type) {
+        this.name = name;
+        this.type = type;
+    }
 
-    TAG,
+    @NotNull
+    public String getName() {
+        return name;
+    }
+
+    @NotNull
+    public Class getType() {
+        return type;
+    }
 }

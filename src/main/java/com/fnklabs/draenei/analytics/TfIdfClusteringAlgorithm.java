@@ -1,10 +1,6 @@
 package com.fnklabs.draenei.analytics;
 
 import org.jetbrains.annotations.NotNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
-import tv.nemo.content.entity.ContentInformation;
 
 import java.util.HashSet;
 import java.util.List;
@@ -15,12 +11,10 @@ import java.util.stream.Collectors;
 /**
  * Content based TF clustering algorithm
  */
-@Service
 class TfIdfClusteringAlgorithm implements ClusteringAlgorithm {
     private TextUtils textUtils;
 
-    @Autowired
-    public TfIdfClusteringAlgorithm(@Qualifier("cacheableTextUtils") TextUtils textUtils) {
+    public TfIdfClusteringAlgorithm(TextUtils textUtils) {
         this.textUtils = textUtils;
     }
 
@@ -63,60 +57,60 @@ class TfIdfClusteringAlgorithm implements ClusteringAlgorithm {
 
     @NotNull
     @Override
-    public Set<Facet> build(@NotNull ContentInformation platformContent) {
+    public Set<Facet> build(@NotNull Object platformContent) {
 
-        Set<Facet> wordFacet = build(platformContent.toString());
-
+//        Set<Facet> wordFacet = build(platformContent.toString());
+//
         Set<Facet> facetSet = new HashSet<>();
-        facetSet.addAll(wordFacet);
-
-        if (platformContent.getContentCategory() != null) {
-            facetSet.add(new Facet(FacetType.CATEGORY, platformContent.getContentCategory(), 1));
-        }
-
-        if (platformContent.getGenre() != null) {
-            platformContent.getGenre()
-                           .stream()
-                           .forEach(item -> {
-                               if (item != null) {
-                                   facetSet.add(new Facet(FacetType.GENRE, item, calculateTf(1, platformContent.getGenre().size())));
-                               }
-                           });
-
-        }
-
-        if (platformContent.getType() != null) {
-            platformContent.getType()
-                           .stream()
-                           .forEach(item -> {
-                               if (item != null) {
-                                   facetSet.add(new Facet(FacetType.TYPE, item, calculateTf(1, platformContent.getType().size())));
-
-                               }
-                           });
-
-
-        }
-
-        if (platformContent.getTags() != null) {
-            platformContent.getTags()
-                           .stream()
-                           .forEach(item -> {
-                               if (item != null) {
-                                   facetSet.add(new Facet(FacetType.TAG, item, calculateTf(1, platformContent.getTags().size())));
-                               }
-                           });
-        }
-
-        if (platformContent.getCrew() != null) {
-            platformContent.getCrew()
-                           .stream()
-                           .forEach(item -> {
-                               if (item != null) {
-                                   facetSet.add(new Facet(FacetType.CREW, item, calculateTf(1, platformContent.getCrew().size())));
-                               }
-                           });
-        }
+//        facetSet.addAll(wordFacet);
+//
+//        if (platformContent.getContentCategory() != null) {
+//            facetSet.add(new Facet(FacetType.CATEGORY, platformContent.getContentCategory(), 1));
+//        }
+//
+//        if (platformContent.getGenre() != null) {
+//            platformContent.getGenre()
+//                           .stream()
+//                           .forEach(item -> {
+//                               if (item != null) {
+//                                   facetSet.add(new Facet(FacetType.GENRE, item, calculateTf(1, platformContent.getGenre().size())));
+//                               }
+//                           });
+//
+//        }
+//
+//        if (platformContent.getType() != null) {
+//            platformContent.getType()
+//                           .stream()
+//                           .forEach(item -> {
+//                               if (item != null) {
+//                                   facetSet.add(new Facet(FacetType.TYPE, item, calculateTf(1, platformContent.getType().size())));
+//
+//                               }
+//                           });
+//
+//
+//        }
+//
+//        if (platformContent.getTags() != null) {
+//            platformContent.getTags()
+//                           .stream()
+//                           .forEach(item -> {
+//                               if (item != null) {
+//                                   facetSet.add(new Facet(FacetType.TAG, item, calculateTf(1, platformContent.getTags().size())));
+//                               }
+//                           });
+//        }
+//
+//        if (platformContent.getCrew() != null) {
+//            platformContent.getCrew()
+//                           .stream()
+//                           .forEach(item -> {
+//                               if (item != null) {
+//                                   facetSet.add(new Facet(FacetType.CREW, item, calculateTf(1, platformContent.getCrew().size())));
+//                               }
+//                           });
+//        }
 
 
         return facetSet;
@@ -126,10 +120,10 @@ class TfIdfClusteringAlgorithm implements ClusteringAlgorithm {
     @Override
     public Set<Facet> build(@NotNull String content) {
 
-        List<String> words = textUtils.tokenizeText(content);
+        List<String> words = textUtils.tokenizeText(content, MorphologyFactory.Language.RU);
 
         List<String> wordList = words.parallelStream()
-                                     .flatMap(word -> textUtils.getNormalForms(word.toLowerCase()).stream())
+                                     .flatMap(word -> textUtils.getNormalForms(word.toLowerCase(), MorphologyFactory.Language.RU).stream())
                                      .collect(Collectors.toList());
 
         return wordList.parallelStream()
@@ -143,7 +137,7 @@ class TfIdfClusteringAlgorithm implements ClusteringAlgorithm {
 
                            Optional<String> first = value.stream().findFirst();
 
-                           return new Facet(FacetType.CONTENT_TEXT, first.get(), tf);
+                           return new Facet(FacetType.TEXT_FACET, first.get(), tf);
                        })
                        .collect(Collectors.toSet());
     }

@@ -1,8 +1,8 @@
 package com.fnklabs.draenei.analytics;
 
+import com.fnklabs.draenei.MetricsFactory;
 import com.hazelcast.mapreduce.Reducer;
 import com.hazelcast.mapreduce.ReducerFactory;
-import tv.nemo.core.Metrics;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,7 +22,7 @@ class SearchResultReducerFactory implements ReducerFactory<Long, Double, Double>
     }
 
 
-    private enum MetricsType implements Metrics.Type {
+    private enum MetricsType implements MetricsFactory.Type {
         SEARCH_REDUCER;
     }
 
