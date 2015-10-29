@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,12 +31,11 @@ import java.util.Optional;
 
 public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
+    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
     /**
      * hashing function to build Entity cache id
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
-    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
-
     /**
      * Distributed object dataGrid
      */
@@ -280,7 +280,11 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
             ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
 
             for (Object key : keys) {
-                objectOutputStream.writeObject(key);
+                if (key instanceof ByteBuffer) {
+                    objectOutputStream.write(((ByteBuffer) key).array());
+                } else {
+                    objectOutputStream.writeObject(key);
+                }
             }
 
             return HASH_FUNCTION.hashBytes(out.toByteArray()).asLong();
