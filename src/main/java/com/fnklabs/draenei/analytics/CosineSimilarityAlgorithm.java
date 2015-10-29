@@ -1,0 +1,92 @@
+package com.fnklabs.draenei.analytics;
+
+import com.codahale.metrics.Timer;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.stereotype.Service;
+import tv.nemo.core.Metrics;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+final class CosineSimilarityAlgorithm implements SimilarityAlgorithm {
+
+    @Override
+    public <T extends Facet, K extends Facet> double getSimilarity(@NotNull Collection<T> firstVector, @NotNull Collection<K> secondVector) {
+        Timer.Context time = Metrics.getTimer(MetricsType.COSINE_SIMILARITY_GET_SIMILARITY).time();
+
+        double firstVectorModule = getVectorModule(firstVector);
+        double secondVectorModule = getVectorModule(secondVector);
+
+        if (firstVectorModule == 0 || secondVectorModule == 0) {
+            return 0;
+        }
+
+
+        double scalarVectorComposition = getScalarComposition(firstVector, secondVector);
+
+        double similarity = scalarVectorComposition / (firstVectorModule * secondVectorModule);
+
+        time.stop();
+
+        return similarity;
+    }
+
+    private enum MetricsType implements Metrics.Type {
+        COSINE_SIMILARITY_GET_VECTOR_MODULE,
+        COSINE_SIMILARITY_GET_SCALAR_COMPOSITION,
+        COSINE_SIMILARITY_TRANSFORM_MAP,
+        COSINE_SIMILARITY_GET_SIMILARITY
+
+    }
+
+    protected static <T extends Facet, K extends Facet> double getVectorModule(@NotNull Collection<T> firstVector) {
+        Timer.Context time = Metrics.getTimer(MetricsType.COSINE_SIMILARITY_GET_VECTOR_MODULE).time();
+
+        double vectorPointSum = firstVector.stream()
+                                           .mapToDouble(entry -> Math.pow(entry.getRank(), 2))
+                                           .sum();
+
+        double sqrt = Math.sqrt(vectorPointSum);
+
+        time.stop();
+
+        return sqrt;
+    }
+
+    protected static <T extends Facet, K extends Facet> double getScalarComposition(@NotNull Collection<T> firstVector, @NotNull Collection<K> secondVector) {
+        Timer.Context time = Metrics.getTimer(MetricsType.COSINE_SIMILARITY_GET_SCALAR_COMPOSITION).time();
+
+        Map<Facet.Key, K> secondMap = transformToMap(secondVector);
+
+        double sum = 0;
+
+        for (T entry : firstVector) {
+//            if (secondMap.containsKey(entry)) {
+            K orDefault = secondMap.get(entry.getKey());
+            if (orDefault != null) {
+//                K orDefault = secondMap.get(entry);
+                sum += entry.getRank() * orDefault.getRank();
+            }
+        }
+
+        time.stop();
+
+        return sum;
+    }
+
+    private static <T extends Facet> Map<Facet.Key, T> transformToMap(@NotNull Collection<T> vector) {
+        Timer.Context time = Metrics.getTimer(MetricsType.COSINE_SIMILARITY_TRANSFORM_MAP).time();
+
+        Map<Facet.Key, T> map = new HashMap<>();
+
+        for (T item : vector) {
+            map.putIfAbsent(item.getKey(), item);
+        }
+
+        time.stop();
+        return map;
+
+    }
+}
