@@ -8,6 +8,7 @@ import com.datastax.driver.core.querybuilder.Delete;
 import com.datastax.driver.core.querybuilder.Insert;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
+import com.datastax.driver.core.utils.Bytes;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.MetricsFactory;
 import com.fnklabs.draenei.orm.exception.MetadataException;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.PreDestroy;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -352,6 +354,10 @@ public class DataProvider<V> {
 
                     if (deserializedValue == null) {
                         continue;
+                    } else if (deserializedValue instanceof ByteBuffer) {
+                        String s = Bytes.toHexString((ByteBuffer) deserializedValue);
+
+                        deserializedValue = Bytes.fromHexString(s);
                     }
                     Method writeMethod = column.getWriteMethod();
 
