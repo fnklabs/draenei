@@ -65,6 +65,7 @@ public class DataProvider<V> {
         this.executorService = executorService;
     }
 
+
     /**
      * Save entity asynchronously
      *
@@ -97,7 +98,7 @@ public class DataProvider<V> {
                 try {
                     value = column.getReadMethod().invoke(entity);
                 } catch (IllegalAccessException | InvocationTargetException e) {
-                    LOGGER.warn("cant invoke read method", e);
+                    LOGGER.warn("Can't invoke read method", e);
                 }
                 boundStatement.setBytesUnsafe(i, getEntityMetadata().serialize(column, value));
             }
@@ -108,7 +109,7 @@ public class DataProvider<V> {
             ResultSetFuture input = getCassandraClient().executeAsync(boundStatement);
             resultFuture = Futures.transform(input, ResultSet::wasApplied, executorService);
         } catch (SyntaxError e) {
-            LOGGER.warn("Cant prepare query: " + queryString, e);
+            LOGGER.warn("Can't prepare query: " + queryString, e);
 
             SettableFuture<Boolean> booleanSettableFuture = SettableFuture.<Boolean>create();
             booleanSettableFuture.setException(e);
@@ -442,12 +443,7 @@ public class DataProvider<V> {
     }
 
     protected <Input> ListenableFuture<Boolean> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture) {
-        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
-            @Override
-            public Boolean apply(Input input) {
-                return true;
-            }
-        });
+        return monitorFuture(timer, listenableFuture, new ResultSetMonitorFunction<Input>());
     }
 
     /**
@@ -471,7 +467,6 @@ public class DataProvider<V> {
         return EntityMetadata.buildEntityMetadata(clazz, getCassandraClient());
     }
 
-
     private enum MetricsType implements MetricsFactory.Type {
         DATA_PROVIDER_FIND_ONE,
         DATA_PROVIDER_SAVE,
@@ -479,6 +474,13 @@ public class DataProvider<V> {
         DATA_PROVIDER_FIND,
     }
 
+    private static class ResultSetMonitorFunction<Input> implements Function<Input, Boolean> {
+
+        @Override
+        public Boolean apply(Input input) {
+            return true;
+        }
+    }
 
     private static class JdkFunctionWrapper<Input, Output> implements com.google.common.base.Function<Input, Output> {
         private final Function<Input, Output> jdkFunction;

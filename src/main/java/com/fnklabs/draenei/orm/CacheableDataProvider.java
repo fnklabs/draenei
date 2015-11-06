@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
@@ -36,6 +37,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
      * hashing function to build Entity cache id
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
+    private static final MonitorFunction MONITOR_FUNCTION = new MonitorFunction();
     /**
      * Distributed object dataGrid
      */
@@ -127,11 +129,11 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
 
         Timer.Context putAsyncTimer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_ASYNC).time();
 
-        ListenableFuture<Boolean> putToCacheFuture = executeOnEntry(entity, new PutToCacheOperation<Long, T>(entity));
+        ListenableFuture<T> putToCacheFuture = executeOnEntry(entity, new PutToCacheOperation<Long, T>(entity));
 
         monitorFuture(putAsyncTimer, putToCacheFuture);
 
-        ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (Boolean result) -> {
+        ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (T result) -> {
             return super.saveAsync(entity);
         }, getExecutorService());
 
@@ -149,7 +151,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
             }
         }, getExecutorService());
 
-        return monitorFuture(time, saveFuture, result -> result);
+        return monitorFuture(time, saveFuture, MONITOR_FUNCTION);
     }
 
     @Override
@@ -334,5 +336,13 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
         CACHEABLE_DATA_PROVIDER_HITS,
         CACHEABLE_DATA_PROVIDER_REMOVE, CACHEABLE_DATA_GET_FROM_DATA_GRID, CACHEABLE_DATA_PROVIDER_PUT_ASYNC;
 
+    }
+
+    private static class MonitorFunction implements Function<Boolean, Boolean> {
+
+        @Override
+        public Boolean apply(Boolean aBoolean) {
+            return aBoolean;
+        }
     }
 }

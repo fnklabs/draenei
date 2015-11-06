@@ -6,7 +6,7 @@ apply plugin: 'signing'
 if (hasProperty("teamcity")) {
     project.ext.buildVersion = teamcity["build.number"]
 } else {
-    project.ext.buildVersion = '0.1.7.8'
+    project.ext.buildVersion = '0.1.7.12'
 }
 
 version = project.ext.buildVersion
@@ -15,8 +15,8 @@ group = 'com.fnklabs'
 println("App module version:" + project.ext.buildVersion)
 
 repositories {
-    mavenCentral()
     mavenLocal()
+    mavenCentral()
 }
 
 buildscript {
