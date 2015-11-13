@@ -113,7 +113,7 @@ public class AnalyticsTest {
 
         when(hazelcastInstance.getExecutorService(anyString())).thenReturn(executorService);
 
-        ListenableFuture<Integer> loadFuture = analytics.loadData(mock(DataProvider.class), UUID.randomUUID());
+        ListenableFuture<Integer> loadFuture = analytics.loadData(mock(DataProvider.class), UUID.randomUUID().toString());
 
         BigInteger startToken = new BigInteger(String.valueOf(Long.MIN_VALUE));
         BigInteger maxValue = new BigInteger(String.valueOf(Long.MAX_VALUE));

@@ -48,7 +48,6 @@ public class Analytics {
      *
      * @param dataProvider      DataProvider from which will be loaded data
      * @param computeTask       Compute task
-     * @param <KeyIn>           Key type
      * @param <ValueIn>         Value type
      * @param <KeyOut>          Output key from mapper
      * @param <ValueOut>        Output value from mapper
@@ -56,13 +55,12 @@ public class Analytics {
      *
      * @return Future for compute operation
      */
-    public <KeyIn, ValueIn, KeyOut, ValueOut, ReducerValueOut> ListenableFuture<Map<KeyOut, ReducerValueOut>> compute(@NotNull DataProvider<ValueIn> dataProvider,
-                                                                                                                      @NotNull ComputeTask<ValueIn, KeyOut, ValueOut, ReducerValueOut> computeTask) {
+    public <ValueIn, KeyOut, ValueOut, ReducerValueOut> ListenableFuture<Map<KeyOut, ReducerValueOut>> compute(@NotNull DataProvider<ValueIn> dataProvider,
+                                                                                                               @NotNull ComputeTask<ValueIn, KeyOut, ValueOut, ReducerValueOut> computeTask) {
         UUID jobId = UUID.randomUUID();
 
-        ListenableFuture<Integer> loadFuture = loadData(dataProvider, jobId);
-
-        String mapName = LoadDataTask.getMapName(jobId);
+        String mapName = String.format("job.%s", jobId);
+        ListenableFuture<Integer> loadFuture = loadData(dataProvider, mapName);
 
         try {
             Integer loadedData = loadFuture.get(30, TimeUnit.MINUTES);
@@ -102,7 +100,7 @@ public class Analytics {
     }
 
     @NotNull
-    protected <ValueIn> ListenableFuture<Integer> loadData(@NotNull DataProvider<ValueIn> dataProvider, UUID jobId) {
+    public <ValueIn> ListenableFuture<Integer> loadData(@NotNull DataProvider<ValueIn> dataProvider, String mapName) {
         List<ListenableFuture<Integer>> futures = new ArrayList<>();
         BigInteger startToken = new BigInteger(String.valueOf(Long.MIN_VALUE));
         BigInteger maxValue = new BigInteger(String.valueOf(Long.MAX_VALUE));
@@ -120,7 +118,7 @@ public class Analytics {
             long startTokenLongValue = startToken.longValue();
             long endTokenLongValue = startTokenLongValue < endToken.longValue() ? endToken.longValue() : Long.MAX_VALUE;
 
-            LoadDataTask<ValueIn> task = new LoadDataTask<>(startTokenLongValue, endTokenLongValue, jobId, dataProvider.getEntityClass());
+            LoadDataTask<ValueIn> task = new LoadDataTask<>(startTokenLongValue, endTokenLongValue, mapName, dataProvider.getEntityClass());
 
             ICompletableFuture<Integer> submit = (ICompletableFuture<Integer>) hazelcastInstance.getExecutorService(getClass().getName()).submit(task);
 

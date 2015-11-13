@@ -8,7 +8,6 @@ import com.hazelcast.core.IMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 
 /**
@@ -17,21 +16,17 @@ import java.util.concurrent.Callable;
 class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInstanceAware, HazelcastInstanceAware {
     private final long startToken;
     private final long endToken;
-    private final UUID jobId;
+    private final String mapName;
     private final Class<T> entityClass;
 
     private transient Analytics analytics;
     private transient HazelcastInstance hazelcastInstance;
 
-    public LoadDataTask(long startToken, long endToken, UUID jobId, Class<T> entityClass) {
+    public LoadDataTask(long startToken, long endToken, String mapName, Class<T> entityClass) {
         this.startToken = startToken;
         this.endToken = endToken;
-        this.jobId = jobId;
+        this.mapName = mapName;
         this.entityClass = entityClass;
-    }
-
-    public static String getMapName(UUID jobId) {
-        return String.format("jon.%s", jobId);
     }
 
     @Override
@@ -58,7 +53,7 @@ class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInsta
     private IMap<Long, T> getMap() {
         Config config = hazelcastInstance.getConfig();
 
-        MapConfig mapConfig = config.getMapConfig(getMapName());
+        MapConfig mapConfig = config.getMapConfig(mapName);
         mapConfig.setEvictionPolicy(EvictionPolicy.NONE);
         mapConfig.setInMemoryFormat(InMemoryFormat.OBJECT);
         mapConfig.setMaxIdleSeconds(0);
@@ -68,10 +63,7 @@ class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInsta
 
         config.addMapConfig(mapConfig);
 
-        return hazelcastInstance.<Long, T>getMap(getMapName());
+        return hazelcastInstance.<Long, T>getMap(mapName);
     }
 
-    private String getMapName() {
-        return getMapName(jobId);
-    }
 }

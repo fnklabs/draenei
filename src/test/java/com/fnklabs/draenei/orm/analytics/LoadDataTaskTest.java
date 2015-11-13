@@ -17,7 +17,7 @@ public class LoadDataTaskTest {
     @Test
     public void testCall() throws Exception {
         UUID jobId = UUID.randomUUID();
-        LoadDataTask<? extends LoadDataTaskTest> loadDataTask = new LoadDataTask<>(0L, 100L, jobId, getClass());
+        LoadDataTask<? extends LoadDataTaskTest> loadDataTask = new LoadDataTask<>(0L, 100L, jobId.toString(), getClass());
 
 
         DataProvider dataProvider = mock(DataProvider.class);
@@ -30,7 +30,7 @@ public class LoadDataTaskTest {
 
         HazelcastInstance hazelcastInstance = mock(HazelcastInstance.class);
         IMap map = mock(IMap.class);
-        when(hazelcastInstance.getMap(LoadDataTask.getMapName(jobId))).thenReturn(map);
+        when(hazelcastInstance.getMap(anyString())).thenReturn(map);
 
         loadDataTask.setAnalyticsInstance(analytics);
         loadDataTask.setHazelcastInstance(hazelcastInstance);
@@ -40,7 +40,7 @@ public class LoadDataTaskTest {
         Assert.assertEquals(1, call);
 
 
-        loadDataTask = new LoadDataTask<>(1, 100, jobId, getClass());
+        loadDataTask = new LoadDataTask<>(1, 100, jobId.toString(), getClass());
         loadDataTask.setAnalyticsInstance(analytics);
         loadDataTask.setHazelcastInstance(hazelcastInstance);
 
