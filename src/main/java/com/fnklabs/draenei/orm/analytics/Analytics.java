@@ -88,11 +88,13 @@ public class Analytics {
             @Override
             public void onResponse(Map<KeyOut, ReducerValueOut> response) {
                 settableFuture.set(response);
+                map.destroy();
             }
 
             @Override
             public void onFailure(Throwable t) {
                 settableFuture.setException(t);
+                map.destroy();
             }
         });
 

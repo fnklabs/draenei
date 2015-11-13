@@ -1,6 +1,7 @@
 package com.fnklabs.draenei.orm.analytics;
 
 import com.fnklabs.draenei.orm.DataProvider;
+import com.hazelcast.config.*;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.HazelcastInstanceAware;
 import com.hazelcast.core.IMap;
@@ -37,7 +38,7 @@ class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInsta
     public Integer call() throws Exception {
         DataProvider<T> dataProvider = analytics.getDataProvider(entityClass);
 
-        IMap<Long, T> map = hazelcastInstance.<Long, T>getMap(getMapName());
+        IMap<Long, T> map = getMap();
 
         LoadIntoHazelcastConsumer<T> consumer = new LoadIntoHazelcastConsumer<>(map, dataProvider);
 
@@ -52,6 +53,22 @@ class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInsta
     @Override
     public void setHazelcastInstance(HazelcastInstance hazelcastInstance) {
         this.hazelcastInstance = hazelcastInstance;
+    }
+
+    private IMap<Long, T> getMap() {
+        Config config = hazelcastInstance.getConfig();
+
+        MapConfig mapConfig = config.getMapConfig(getMapName());
+        mapConfig.setEvictionPolicy(EvictionPolicy.NONE);
+        mapConfig.setInMemoryFormat(InMemoryFormat.OBJECT);
+        mapConfig.setMaxIdleSeconds(0);
+        mapConfig.setMaxSizeConfig(new MaxSizeConfig());
+        mapConfig.setMaxIdleSeconds(0);
+        mapConfig.setTimeToLiveSeconds(0);
+
+        config.addMapConfig(mapConfig);
+
+        return hazelcastInstance.<Long, T>getMap(getMapName());
     }
 
     private String getMapName() {
