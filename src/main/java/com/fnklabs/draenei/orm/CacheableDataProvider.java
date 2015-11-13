@@ -32,10 +32,7 @@ import java.util.Optional;
 public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
-    /**
-     * hashing function to build Entity cache id
-     */
-    private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
+
     /**
      * Distributed object dataGrid
      */
@@ -49,10 +46,9 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
                                  CassandraClient cassandraClient,
                                  HazelcastInstance hazelcastInstance,
                                  MetricsFactory metricsFactory,
-                                 @Nullable EventListener<T> eventListener,
-                                 ListeningExecutorService executorService) {
+                                 @Nullable EventListener<T> eventListener) {
 
-        super(clazz, cassandraClient, hazelcastInstance, metricsFactory, executorService);
+        super(clazz, cassandraClient, hazelcastInstance, metricsFactory);
 
         this.eventListener = eventListener;
 
@@ -68,7 +64,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
                                  MetricsFactory metricsFactory,
                                  ListeningExecutorService executorService) {
 
-        super(clazz, cassandraClient, hazelcastInstance, metricsFactory, executorService);
+        super(clazz, cassandraClient, hazelcastInstance, metricsFactory);
 
         this.eventListener = null;
 
@@ -111,7 +107,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
                 public void onFailure(Throwable t) {
                     LOGGER.warn("Can't put to cache", t);
                 }
-            }, getExecutorService());
+            });
 
             return findFuture;
         });
@@ -133,7 +129,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
 
         ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (Boolean result) -> {
             return super.saveAsync(entity);
-        }, getExecutorService());
+        });
 
         Futures.addCallback(saveFuture, new FutureCallback<Boolean>() {
             @Override
@@ -147,7 +143,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
             public void onFailure(Throwable t) {
                 LOGGER.warn("Cant save entry", t);
             }
-        }, getExecutorService());
+        });
 
         return monitorFuture(time, saveFuture, result -> result);
     }
@@ -179,7 +175,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
             ListenableFuture<Boolean> removeFuture = super.removeAsync(entity);
 
             if (eventListener != null) {
-                getExecutorService().submit(() -> eventListener.onEntryRemove(entity));
+                eventListener.onEntryRemove(entity);
             }
 
             return removeFuture;
@@ -228,73 +224,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
         return dataGrid;
     }
 
-    protected final long buildCacheKey(@NotNull T entity) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_CREATE_KEY).time();
 
-        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
-
-        List<Object> keys = new ArrayList<>();
-
-        for (int i = 0; i < primaryKeysSize; i++) {
-            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
-
-            if (primaryKey.isPresent()) {
-                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
-
-                Method readMethod = primaryKeyMetadata.getReadMethod();
-
-                try {
-                    Object value = readMethod.invoke(entity);
-                    keys.add(value);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    LOGGER.warn(String.format("Can't invoke read method: %s#%s", entity.getClass(), readMethod.getName()), e);
-                }
-            }
-        }
-
-        long cacheKey = buildCacheKey(keys);
-
-        time.stop();
-
-        return cacheKey;
-    }
-
-    /**
-     * Build cache key
-     *
-     * @param keys Entity keys
-     *
-     * @return Cache key
-     */
-    protected final long buildCacheKey(Object... keys) {
-        ArrayList<Object> keyList = new ArrayList<>();
-
-        Collections.addAll(keyList, keys);
-
-        return buildCacheKey(keyList);
-    }
-
-    private long buildCacheKey(List<Object> keys) {
-        try {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
-
-            for (Object key : keys) {
-                if (objectOutputStream instanceof Serializable) {
-                    objectOutputStream.writeObject(key);
-                }else {
-                    objectOutputStream.writeInt(key.hashCode());
-                }
-            }
-
-            return HASH_FUNCTION.hashBytes(out.toByteArray()).asLong();
-
-        } catch (IOException e) {
-            LOGGER.warn("Can't ");
-
-            throw new CanNotBuildEntryCacheKey(getEntityClass(), e);
-        }
-    }
 
     @NotNull
     private String getMapName(Class<T> clazz) {
@@ -321,7 +251,7 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
                 timer.stop();
                 responseFuture.setException(t);
             }
-        }, getExecutorService());
+        });
 
         return responseFuture;
 

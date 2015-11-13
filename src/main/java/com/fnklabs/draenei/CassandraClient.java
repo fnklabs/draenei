@@ -5,30 +5,29 @@ import com.datastax.driver.core.*;
 import com.datastax.driver.core.policies.*;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 
 public class CassandraClient {
-    public static final int RECONNECTION_DELAY_TIME = 5000;
+    private static final int RECONNECTION_DELAY_TIME = 5000;
     /**
      * Read timeout in ms
      */
-    private static final int READ_TIMEOUT = 10000;
+    private static final int READ_TIMEOUT = 15000;
     /**
-     * Read timeout in ms
+     * Connection timeout in ms
      */
     private static final int CONNECT_TIMEOUT_MILLIS = 30000;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CassandraClient.class);
-    /**
-     * Cassandra cluster instance
-     */
-    private final Cluster cluster;
 
     /**
      * Prepared statements map that allow solve problem with several prepared statements execution is same query
@@ -90,28 +89,34 @@ public class CassandraClient {
         }
 
         try {
-            cluster = builder.build();
+            Cluster cluster = builder.build();
+
+            Metadata metadata = cluster.getMetadata();
+
+            LOGGER.info(String.format("Connecting to cluster: %s", metadata.getClusterName()));
+
+            for (Host host : metadata.getAllHosts()) {
+                LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
+            }
+
+            cluster.init();
+
+            session = createSession(cluster, keyspace);
         } catch (IllegalArgumentException e) {
             LOGGER.warn("Cant build cluster", e);
             throw e;
         }
+    }
 
-        Metadata metadata = cluster.getMetadata();
-
-        LOGGER.info(String.format("Connect to cluster: %s", metadata.getClusterName()));
-
-        for (Host host : metadata.getAllHosts()) {
-            LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
-        }
-
-        cluster.init();
-
-        session = createSession(cluster, keyspace);
+    public CassandraClient(@NotNull Session session, @NotNull ListeningExecutorService executorService, @NotNull MetricsFactory metricsFactory) {
+        this.session = session;
+        this.executorService = executorService;
+        this.metricsFactory = metricsFactory;
     }
 
     @NotNull
     public KeyspaceMetadata getKeyspaceMetadata(@NotNull String keyspace) {
-        return cluster.getMetadata().getKeyspace(keyspace);
+        return getSession().getCluster().getMetadata().getKeyspace(keyspace);
     }
 
     @NotNull
@@ -124,9 +129,8 @@ public class CassandraClient {
         return getKeyspaceMetadata(keyspace).getTable(tablename);
     }
 
-
     public void dumpMetrics() {
-        Metrics metrics = cluster.getMetrics();
+        Metrics metrics = getSession().getCluster().getMetrics();
 
         Metrics.Errors errorMetrics = metrics.getErrorMetrics();
 
@@ -166,27 +170,44 @@ public class CassandraClient {
         return preparedStatementsMap.compute(query, new ComputePreparedStatement());
     }
 
-    public ResultSet execute(String query) {
+    public ResultSet execute(@NotNull String query) {
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
 
-        return getSession().execute(query);
+        ResultSet resultSet = getSession().execute(query);
+        time.stop();
+
+        return resultSet;
     }
 
-    public ResultSetFuture executeAsync(String query) throws IllegalStateException {
+    public ResultSet execute(@NotNull Statement statement) {
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
+
+        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
+
+        ResultSet resultSetFuture = getSession().execute(statement);
+
+        time.stop();
+
+        return resultSetFuture;
+    }
+
+    public ResultSetFuture executeAsync(@NotNull String query) throws IllegalStateException {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
 
         ResultSetFuture resultSetFuture = getSession().executeAsync(query);
-        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(query), executorService);
+
+        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(query));
 
         monitorFuture(time, resultSetFuture);
 
         return resultSetFuture;
     }
 
-    public ResultSetFuture executeAsync(BoundStatement boundStatement) throws IllegalStateException {
+    public ResultSetFuture executeAsync(@NotNull BoundStatement boundStatement) throws IllegalStateException {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
@@ -194,7 +215,28 @@ public class CassandraClient {
 
         ResultSetFuture resultSetFuture = getSession().executeAsync(boundStatement);
 
-        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(boundStatement.preparedStatement().getQueryString()), executorService);
+        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(boundStatement.preparedStatement().getQueryString()));
+        monitorFuture(time, resultSetFuture);
+
+        return resultSetFuture;
+    }
+
+    /**
+     * Execute statement
+     *
+     * @param statement Statement that must be executed
+     *
+     * @return ResultSetFuture
+     */
+    @NotNull
+    public ResultSetFuture executeAsync(@NotNull Statement statement) {
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
+
+        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
+
+        ResultSetFuture resultSetFuture = getSession().executeAsync(statement);
+
+        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(statement.getKeyspace()));
         monitorFuture(time, resultSetFuture);
 
         return resultSetFuture;
@@ -205,7 +247,7 @@ public class CassandraClient {
      */
     public void close() {
         session.close();
-        cluster.close();
+        session.getCluster().close();
     }
 
     /**
@@ -218,47 +260,11 @@ public class CassandraClient {
         return session;
     }
 
-    /**
-     * Execute statement
-     *
-     * @param statement Statement that must be executed
-     *
-     * @return ResultSetFuture
-     */
-    @NotNull
-    public ResultSetFuture executeAsync(Statement statement) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
-
-        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
-
-        ResultSetFuture resultSetFuture = getSession().executeAsync(statement);
-
-        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(statement.getKeyspace()), executorService);
-        monitorFuture(time, resultSetFuture);
-
-        return resultSetFuture;
+    public Set<Host> getMembers() {
+        return getSession().getCluster().getMetadata().getAllHosts();
     }
 
-    /**
-     * Create session
-     *
-     * @param cluster  Cluster instance
-     * @param keyspace Default keyspace
-     *
-     * @return Session instance
-     */
-    private Session createSession(@NotNull Cluster cluster, @NotNull String keyspace) {
-        Session session = cluster.connect(keyspace);
-        session.init();
-
-        return session;
-    }
-
-    private MetricsFactory getMetricsFactory() {
-        return metricsFactory;
-    }
-
-    private <T> void monitorFuture(Timer.Context timer, com.google.common.util.concurrent.ListenableFuture<T> future) {
+    protected <T> void monitorFuture(@NotNull Timer.Context timer, @NotNull ListenableFuture<T> future) {
         Futures.addCallback(future, new FutureCallback<T>() {
             @Override
             public void onSuccess(T result) {
@@ -270,7 +276,28 @@ public class CassandraClient {
                 timer.stop();
                 LOGGER.warn("Cant complete operation", t);
             }
-        }, executorService);
+        });
+    }
+
+    @NotNull
+    protected SocketOptions getSocketOptions() {
+        SocketOptions socketOptions = new SocketOptions();
+        socketOptions.setConnectTimeoutMillis(CONNECT_TIMEOUT_MILLIS);
+        socketOptions.setReadTimeoutMillis(READ_TIMEOUT);
+        socketOptions.setKeepAlive(true);
+        socketOptions.setTcpNoDelay(true);
+        return socketOptions;
+    }
+
+    @NotNull
+    protected QueryOptions getQueryOptions() {
+        QueryOptions queryOptions = new QueryOptions();
+        queryOptions.setConsistencyLevel(ConsistencyLevel.QUORUM);
+        return queryOptions;
+    }
+
+    private MetricsFactory getMetricsFactory() {
+        return metricsFactory;
     }
 
     private enum MetricsType implements MetricsFactory.Type {
@@ -281,21 +308,19 @@ public class CassandraClient {
         CASSANDRA_PROCESSING_QUERIES,
     }
 
-    @NotNull
-    private static QueryOptions getQueryOptions() {
-        QueryOptions queryOptions = new QueryOptions();
-        queryOptions.setConsistencyLevel(ConsistencyLevel.QUORUM);
-        return queryOptions;
-    }
+    /**
+     * Create session
+     *
+     * @param cluster  Cluster instance
+     * @param keyspace Default keyspace
+     *
+     * @return Session instance
+     */
+    private static Session createSession(@NotNull Cluster cluster, @NotNull String keyspace) {
+        Session session = cluster.connect(keyspace);
+        session.init();
 
-    @NotNull
-    private static SocketOptions getSocketOptions() {
-        SocketOptions socketOptions = new SocketOptions();
-        socketOptions.setConnectTimeoutMillis(CONNECT_TIMEOUT_MILLIS);
-        socketOptions.setReadTimeoutMillis(READ_TIMEOUT);
-        socketOptions.setKeepAlive(true);
-        socketOptions.setTcpNoDelay(true);
-        return socketOptions;
+        return session;
     }
 
     @NotNull
