@@ -1,7 +1,7 @@
 package com.fnklabs.draenei.analytics;
 
 /**
- * Unknown algorithm exception. Used by {@link ClusteringAlgorithmFactory} && {@link SimilarityAlgorithmFactory}
+ * Unknown algorithm exception. Used by {@link ClusteringAlgorithmFactory} and {@link SimilarityAlgorithmFactory}
  */
 class UnknownAlgorithm extends RuntimeException {
 

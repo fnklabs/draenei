@@ -54,7 +54,7 @@ public class Analytics {
      * @param <ValueOut>        Output value from mapper
      * @param <ReducerValueOut> Output value from reducer
      *
-     * @return
+     * @return Future for compute operation
      */
     public <KeyIn, ValueIn, KeyOut, ValueOut, ReducerValueOut> ListenableFuture<Map<KeyOut, ReducerValueOut>> compute(@NotNull DataProvider<ValueIn> dataProvider,
                                                                                                                       @NotNull ComputeTask<ValueIn, KeyOut, ValueOut, ReducerValueOut> computeTask) {
