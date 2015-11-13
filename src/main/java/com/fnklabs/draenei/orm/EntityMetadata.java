@@ -1,18 +1,12 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.TableMetadata;
 import com.fnklabs.draenei.CassandraClient;
-import com.fnklabs.draenei.orm.annotations.Column;
-import com.fnklabs.draenei.orm.annotations.Enumerated;
-import com.fnklabs.draenei.orm.annotations.PrimaryKey;
 import com.fnklabs.draenei.orm.annotations.Table;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,39 +14,67 @@ import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Contains entity metadata information
+ */
 class EntityMetadata {
-    public static final Logger LOGGER = LoggerFactory.getLogger(EntityMetadata.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(EntityMetadata.class);
+
     @NotNull
     private final String tableName;
+
     private final boolean compactStorage;
+
     private final int maxFetchSize;
+
     @NotNull
-    private final ConsistencyLevel consistencyLevel;
+    private final ConsistencyLevel readConsistencyLevel;
+
+    @NotNull
+    private final ConsistencyLevel writeConsistencyLevel;
+
     @NotNull
     private final HashMap<String, List<ColumnMetadata>> columnsMetadata = new HashMap<>();
+    /**
+     * DataStax table metadata need to serialize and deserialize data
+     */
     @NotNull
     private final TableMetadata tableMetadata;
+
     @NotNull
     private final HashMap<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
 
     public EntityMetadata(@NotNull String tableName,
                           boolean compactStorage,
                           int maxFetchSize,
-                          @NotNull ConsistencyLevel consistencyLevel,
+                          @NotNull ConsistencyLevel readConsistencyLevel,
+                          @NotNull ConsistencyLevel writeConsistencyLevel,
                           @NotNull TableMetadata tableMetadata) {
         this.tableName = tableName;
         this.compactStorage = compactStorage;
         this.maxFetchSize = maxFetchSize;
-        this.consistencyLevel = consistencyLevel;
+        this.readConsistencyLevel = readConsistencyLevel;
+        this.writeConsistencyLevel = writeConsistencyLevel;
         this.tableMetadata = tableMetadata;
+    }
+
+    public int getPartitionKeySize() {
+        return columnsMetadata.entrySet()
+                              .stream()
+                              .mapToInt(entry -> {
+                                          boolean anyMatch = entry.getValue()
+                                                                  .stream()
+                                                                  .anyMatch(item -> item instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) item).isPartitionKey());
+
+                                          return anyMatch ? 1 : 0;
+                                      }
+                              ).sum();
     }
 
     protected void addColumnMetadata(@NotNull ColumnMetadata columnMetadata) {
@@ -70,42 +92,6 @@ class EntityMetadata {
 
     protected Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
         return Optional.ofNullable(primaryKeys.get(oder));
-    }
-
-    protected <T> ByteBuffer serialize(ColumnMetadata<T> columnMetadata, Object value) {
-        if (value == null) {
-            return null;
-        }
-        com.datastax.driver.core.ColumnMetadata column = tableMetadata.getColumn(columnMetadata.getName());
-
-        if (value.getClass().isEnum()) {
-            return DataType.text().serialize(value.toString(), ProtocolVersion.NEWEST_SUPPORTED);
-        }
-
-        return column.getType().serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
-    }
-
-    protected <T> T deserialize(ColumnMetadata<T> columnMetadata, ByteBuffer bytesUnsafe) {
-        if (bytesUnsafe == null) {
-            return null;
-        }
-        com.datastax.driver.core.ColumnMetadata column = tableMetadata.getColumn(columnMetadata.getName());
-
-        if (columnMetadata.getType().isEnum()) {
-            Object value = DataType.text().deserialize(bytesUnsafe, ProtocolVersion.NEWEST_SUPPORTED);
-
-            Object[] enumConstants = columnMetadata.getType().getEnumConstants();
-
-            HashMap<String, Object> fromStringEnum = new HashMap<String, Object>(enumConstants.length);
-
-            for (Object constant : enumConstants)
-                fromStringEnum.put(constant.toString(), constant);
-
-            return (T) fromStringEnum.get(value);
-
-        }
-
-        return (T) column.getType().deserialize(bytesUnsafe, ProtocolVersion.NEWEST_SUPPORTED);
     }
 
     protected boolean isCompactStorage() {
@@ -135,30 +121,13 @@ class EntityMetadata {
         return tableMetadata.getClusteringColumns().size();
     }
 
-    protected int getPartitionKeysSize() {
-        int compositeKeysSize = columnsMetadata.entrySet()
-                                               .stream()
-                                               .mapToInt(entry -> {
-                                                           boolean anyMatch = entry.getValue()
-                                                                                   .stream()
-                                                                                   .anyMatch(item -> {
-                                                                                       return item instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) item).isPartitionKey();
-                                                                                   });
-
-                                                           return anyMatch ? 1 : 0;
-                                                       }
-                                               ).sum();
-
-        return compositeKeysSize;
-    }
-
     protected int getMaxFetchSize() {
         return maxFetchSize;
     }
 
     protected int getMinPrimaryKeys() {
-        if (getPartitionKeysSize() > 0) {
-            return getPartitionKeysSize();
+        if (getPartitionKeySize() > 0) {
+            return getPartitionKeySize();
         }
 
         return 1;
@@ -169,17 +138,29 @@ class EntityMetadata {
     }
 
     @NotNull
-    protected ConsistencyLevel getConsistencyLevel() {
-        return consistencyLevel;
+    protected ConsistencyLevel getWriteConsistencyLevel() {
+        return writeConsistencyLevel;
     }
 
-    protected void validate() {
-        if (StringUtils.isEmpty(getTableName())) {
-            throw new MetadataException(String.format("Invalid table name: \"%s\"", getTableName()));
+    @NotNull
+    protected ConsistencyLevel getReadConsistencyLevel() {
+        return readConsistencyLevel;
+    }
+
+    /**
+     * Validate entity metadata
+     *
+     * @param entityMetadata Entity Metadata instance
+     *
+     * @throws MetadataException if invalid metadada was provided
+     */
+    protected static void validate(@NotNull EntityMetadata entityMetadata) {
+        if (StringUtils.isEmpty(entityMetadata.getTableName())) {
+            throw new MetadataException(String.format("Invalid table name: \"%s\"", entityMetadata.getTableName()));
         }
 
-        if (getPartitionKeysSize() < 1) {
-            throw new MetadataException(String.format("Entity \"%s\"must contains primary key", getClass().getName()));
+        if (entityMetadata.getPartitionKeySize() < 1) {
+            throw new MetadataException(String.format("Entity \"%s\"must contains primary key", entityMetadata.getTableName()));
         }
     }
 
@@ -201,115 +182,42 @@ class EntityMetadata {
             throw new MetadataException(String.format("Table annotation is missing for %s", clazz.getName()));
         }
 
+        TableMetadata tableMetadata = cassandraClient.getTableMetadata(tableAnnotation.name());
+
         EntityMetadata entityMetadata = new EntityMetadata(
                 tableAnnotation.name(),
                 tableAnnotation.compactStorage(),
                 tableAnnotation.fetchSize(),
-                tableAnnotation.consistencyLevel(),
-                cassandraClient.getTableMetadata(tableAnnotation.name())
+                tableAnnotation.readConsistencyLevel(),
+                tableAnnotation.writeConsistencyLevel(),
+                tableMetadata
         );
 
         try {
             BeanInfo beanInfo = Introspector.getBeanInfo(clazz);
 
-            PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
-
-            for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
+            for (PropertyDescriptor propertyDescriptor : beanInfo.getPropertyDescriptors()) {
 
                 try {
-                    Field field = clazz.getDeclaredField(propertyDescriptor.getName());
+                    ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, clazz, tableMetadata);
 
-                    List<ColumnMetadata> columnMetadataList = buildColumnMetadata(propertyDescriptor, field);
+                    if (columnMetadata != null) {
+                        entityMetadata.addColumnMetadata(columnMetadata);
+                    }
 
-                    columnMetadataList.forEach(entityMetadata::addColumnMetadata);
+                    LOGGER.warn("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
                 } catch (NoSuchFieldException e) {
+//                    LOGGER.warn("Cant build column metadata", e);
                 }
-
-//                LOGGER.debug("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
             }
         } catch (IntrospectionException e) {
-            LOGGER.warn(e.getMessage(), e);
+            LOGGER.warn("Can't build column metadata", e);
         }
 
-        entityMetadata.validate();
+        EntityMetadata.validate(entityMetadata);
 
         return entityMetadata;
     }
 
-    /**
-     * Build column metadata from field
-     *
-     * @param propertyDescriptor Field property descriptor
-     * @param field              Class field
-     *
-     * @return Column metadata
-     */
-    private static List<ColumnMetadata> buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Field field) {
-        List<ColumnMetadata> columnMetadataList = new ArrayList<>();
 
-        Column columnAnnotation = field.getDeclaredAnnotation(Column.class);
-
-        if (columnAnnotation != null) {
-
-            ColumnMetadata<?> columnMetadata = buildColumnMetadata(propertyDescriptor, field, columnAnnotation);
-
-            columnMetadataList.add(columnMetadata);
-
-            EnumeratedMetadata<?> enumeratedMetadata = buildEnumeratedMetadata(propertyDescriptor, field, columnMetadata);
-
-            if (enumeratedMetadata != null) {
-                columnMetadataList.add(enumeratedMetadata);
-            }
-
-            PrimaryKeyMetadata<?> primaryKeyMetadata = buildPrimaryKeyMetadata(propertyDescriptor, field, columnAnnotation);
-
-            if (primaryKeyMetadata != null) {
-                columnMetadataList.add(primaryKeyMetadata);
-            }
-        }
-
-        return columnMetadataList;
-    }
-
-    @Nullable
-    private static PrimaryKeyMetadata<?> buildPrimaryKeyMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Field field, @NotNull Column columnAnnotation) {
-        PrimaryKey primaryKeyAnnotation = field.getDeclaredAnnotation(PrimaryKey.class);
-
-        if (primaryKeyAnnotation != null) {
-            PrimaryKeyMetadata<?> primaryKeyMetadata = new PrimaryKeyMetadata<>(
-                    propertyDescriptor,
-                    columnAnnotation.name(),
-                    primaryKeyAnnotation.order(),
-                    primaryKeyAnnotation.isPartitionKey(),
-                    field.getType()
-            );
-
-            return primaryKeyMetadata;
-        }
-        return null;
-    }
-
-    @Nullable
-    private static EnumeratedMetadata<?> buildEnumeratedMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Field field, @NotNull ColumnMetadata<?> columnMetadata) {
-        Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
-
-        if (enumeratedAnnotation != null) {
-            EnumeratedMetadata<?> e = new EnumeratedMetadata<>(propertyDescriptor, field.getType(), columnMetadata.getName());
-
-            return e;
-        }
-
-        return null;
-    }
-
-    @NotNull
-    private static ColumnMetadata<?> buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Field field, @NotNull Column columnAnnotation) {
-        String columnName = columnAnnotation.name();
-
-        if (StringUtils.isEmpty(columnName)) {
-            columnName = propertyDescriptor.getName();
-        }
-
-        return new ColumnMetadata<>(propertyDescriptor, field.getType(), columnName);
-    }
 }

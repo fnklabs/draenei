@@ -12,16 +12,13 @@ import java.util.UUID;
 public class TestEntity implements Cacheable {
     @PrimaryKey(order = 0)
     @Column(name = "id")
-    private String id = UUID.randomUUID().toString();
+    private UUID id = UUID.randomUUID();
 
-    private String cacheKey;
-
-
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 

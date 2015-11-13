@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Map;
 
 class PutToCacheOperation<Key, Value extends Cacheable> extends AbstractEntryProcessor<Key, Value> {
+
     @NotNull
     private final Value value;
 

@@ -3,34 +3,44 @@ package com.fnklabs.draenei.orm;
 import com.codahale.metrics.Timer;
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.SyntaxError;
-import com.datastax.driver.core.policies.FallthroughRetryPolicy;
 import com.datastax.driver.core.querybuilder.Delete;
 import com.datastax.driver.core.querybuilder.Insert;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
-import com.datastax.driver.core.utils.Bytes;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.MetricsFactory;
+import com.fnklabs.draenei.orm.exception.CanNotBuildEntryCacheKey;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.fnklabs.draenei.orm.exception.QueryException;
-import com.google.common.util.concurrent.*;
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import com.hazelcast.core.HazelcastInstance;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.PreDestroy;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class DataProvider<V> {
     private static final Logger LOGGER = LoggerFactory.getLogger(DataProvider.class);
+    /**
+     * hashing function to build Entity cache id
+     */
+    private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
 
     @NotNull
     private final Class<V> clazz;
@@ -45,26 +55,55 @@ public class DataProvider<V> {
     private final MetricsFactory metricsFactory;
 
     @NotNull
-    private final ListeningExecutorService executorService;
+    private final HazelcastInstance hazelcastInstance;
 
     @NotNull
-    private final HazelcastInstance hazelcastInstance;
+    private final Function<Row, V> mapToObjectFunction;
 
     public DataProvider(
             @NotNull Class<V> clazz,
             @NotNull CassandraClient cassandraClient,
             @NotNull HazelcastInstance hazelcastInstance,
-            @NotNull MetricsFactory metricsFactory,
-            @NotNull ListeningExecutorService executorService
+            @NotNull MetricsFactory metricsFactory
     ) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClient;
         this.hazelcastInstance = hazelcastInstance;
         this.metricsFactory = metricsFactory;
         this.entityMetadata = build(clazz);
-        this.executorService = executorService;
+        this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
     }
 
+    public long buildCacheKey(@NotNull V entity) {
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY).time();
+
+        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
+
+        List<Object> keys = new ArrayList<>();
+
+        for (int i = 0; i < primaryKeysSize; i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (primaryKey.isPresent()) {
+                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+                Method readMethod = primaryKeyMetadata.getReadMethod();
+
+                try {
+                    Object value = readMethod.invoke(entity);
+                    keys.add(value);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    LOGGER.warn(String.format("Can't invoke read method: %s#%s", entity.getClass(), readMethod.getName()), e);
+                }
+            }
+        }
+
+        long cacheKey = buildCacheKey(keys);
+
+        time.stop();
+
+        return cacheKey;
+    }
 
     /**
      * Save entity asynchronously
@@ -84,30 +123,16 @@ public class DataProvider<V> {
 
         String queryString = insert.getQueryString();
 
-        ListenableFuture<Boolean> resultFuture = null;
+        ListenableFuture<Boolean> resultFuture;
 
         try {
             PreparedStatement prepare = getCassandraClient().prepare(queryString);
-            BoundStatement boundStatement = new BoundStatement(prepare);
+            prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
-
-            for (int i = 0; i < columns.size(); i++) {
-                ColumnMetadata column = columns.get(i);
-
-                Object value = null;
-                try {
-                    value = column.getReadMethod().invoke(entity);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    LOGGER.warn("Can't invoke read method", e);
-                }
-                boundStatement.setBytesUnsafe(i, getEntityMetadata().serialize(column, value));
-            }
-
-            boundStatement.setConsistencyLevel(getEntityMetadata().getConsistencyLevel());
-            boundStatement.setRetryPolicy(FallthroughRetryPolicy.INSTANCE);
+            BoundStatement boundStatement = getBoundStatement(entity, columns, prepare);
 
             ResultSetFuture input = getCassandraClient().executeAsync(boundStatement);
-            resultFuture = Futures.transform(input, ResultSet::wasApplied, executorService);
+            resultFuture = Futures.transform(input, ResultSet::wasApplied);
         } catch (SyntaxError e) {
             LOGGER.warn("Can't prepare query: " + queryString, e);
 
@@ -132,9 +157,8 @@ public class DataProvider<V> {
     public ListenableFuture<Boolean> removeAsync(@NotNull V entity) {
         Timer.Context removeAsyncTimer = metricsFactory.getTimer(MetricsType.DATA_PROVIDER_REMOVE).time();
 
-        Delete from = QueryBuilder
-                .delete()
-                .from(getEntityMetadata().getTableName());
+        Delete from = QueryBuilder.delete()
+                                  .from(getEntityMetadata().getTableName());
 
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
@@ -142,6 +166,11 @@ public class DataProvider<V> {
 
         for (int i = 0; i < primaryKeysSize; i++) {
             Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (!primaryKey.isPresent()) {
+                throw new QueryException(String.format("Invalid primary key index: %d", i));
+            }
+
             PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
 
             if (i == 0) {
@@ -155,29 +184,32 @@ public class DataProvider<V> {
         assert where != null;
 
         PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+        prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
         BoundStatement boundStatement = new BoundStatement(prepare);
 
         for (int i = 0; i < primaryKeysSize; i++) {
             Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (!primaryKey.isPresent()) {
+                throw new QueryException(String.format("Invalid primary key index: %d", i));
+            }
+
             PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
 
             Method readMethod = primaryKeyMetadata.getReadMethod();
 
-            Object value = null;
             try {
-                value = readMethod.invoke(entity);
+                Object value = readMethod.invoke(entity);
+                boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(value));
             } catch (IllegalAccessException | InvocationTargetException | NullPointerException e) {
-                LOGGER.warn("cant invoke read method", e);
+                LOGGER.warn("Can't invoke read method", e);
             }
-
-            boundStatement.setBytesUnsafe(i, getEntityMetadata().serialize(primaryKeyMetadata, value));
         }
-
 
         ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
 
-        ListenableFuture<Boolean> transform = Futures.transform(resultSetFuture, (ResultSet resultSet) -> resultSet.wasApplied(), executorService);
+        ListenableFuture<Boolean> transform = Futures.transform(resultSetFuture, ResultSet::wasApplied);
 
         monitorFuture(removeAsyncTimer, transform);
 
@@ -194,7 +226,7 @@ public class DataProvider<V> {
     public ListenableFuture<V> findOneAsync(Object... keys) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_FIND_ONE).time();
 
-        ListenableFuture<V> transform = Futures.transform(findAsync(keys), (List<V> result) -> result.isEmpty() ? null : result.get(0), executorService);
+        ListenableFuture<V> transform = Futures.transform(findAsync(keys), (List<V> result) -> result.isEmpty() ? null : result.get(0));
 
         monitorFuture(time, transform);
 
@@ -211,29 +243,91 @@ public class DataProvider<V> {
     public ListenableFuture<List<V>> findAsync(Object... keys) {
         Timer.Context timer = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_FIND).time();
 
-        List<V> result = Collections.synchronizedList(new ArrayList<>());
-
         List<Object> parameters = new ArrayList<>();
 
         Collections.addAll(parameters, keys);
 
-        ListenableFuture<Boolean> resultFuture = seek(result::add, parameters);
+        ListenableFuture<List<V>> resultFuture = fetch(parameters);
 
-        ListenableFuture<List<V>> transform = Futures.transform(resultFuture, (Boolean status) -> result, executorService);
+        monitorFuture(timer, resultFuture);
 
-        monitorFuture(timer, transform);
-
-        return transform;
+        return resultFuture;
     }
 
-    @PreDestroy
-    public void shutDown() {
-        getExecutorService().shutdown();
-        try {
-            getExecutorService().awaitTermination(600, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+    public <UserCallback extends Serializable & Consumer<V>> Integer load(long startToken, long endToken, UserCallback consumer) {
+        Select select = QueryBuilder.select()
+                                    .all()
+                                    .from(getEntityMetadata().getTableName());
+
+        String[] primaryKeys = new String[getEntityMetadata().getPartitionKeySize()];
+
+        for (int i = 0; i < getEntityMetadata().getPartitionKeySize(); i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (!primaryKey.isPresent()) {
+                throw new QueryException(String.format("Invalid primary key index: %d", i));
+            }
+
+            PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+            String columnName = primaryKeyMetadata.getName();
+
+            primaryKeys[i] = columnName;
         }
+
+        Select.Where where = select.where(QueryBuilder.gte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
+
+        if (endToken != Long.MAX_VALUE) {
+            where = where.and(QueryBuilder.lt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
+        } else {
+            where = where.and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
+        }
+
+        PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+        prepare.setConsistencyLevel(getReadConsistencyLevel());
+
+        BoundStatement boundStatement = new BoundStatement(prepare);
+        boundStatement.bind(startToken, endToken);
+
+        boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
+        boundStatement.setConsistencyLevel(getEntityMetadata().getReadConsistencyLevel());
+
+        ResultSet resultSet = getCassandraClient().execute(boundStatement);
+
+        Iterator<Row> iterator = resultSet.iterator();
+
+        int loadedItems = 0;
+
+        while (iterator.hasNext()) {
+            Row next = iterator.next();
+
+            V instance = mapToObject(next);
+
+            consumer.accept(instance);
+
+            loadedItems++;
+        }
+
+        return loadedItems;
+    }
+
+    public Class<V> getEntityClass() {
+        return clazz;
+    }
+
+    /**
+     * Build cache key
+     *
+     * @param keys Entity keys
+     *
+     * @return Cache key
+     */
+    protected final long buildCacheKey(Object... keys) {
+        ArrayList<Object> keyList = new ArrayList<>();
+
+        Collections.addAll(keyList, keys);
+
+        return buildCacheKey(keyList);
     }
 
     @NotNull
@@ -245,28 +339,29 @@ public class DataProvider<V> {
         return getEntityMetadata().getTableName();
     }
 
-    protected Class<V> getEntityClass() {
-        return clazz;
-    }
-
     protected int getMaxFetchSize() {
         return getEntityMetadata().getMaxFetchSize();
     }
 
-    protected ListenableFuture<Boolean> seek(Consumer<V> consumer, List<Object> keys) {
+    protected ListenableFuture<List<V>> fetch(List<Object> keys) {
+        List<V> result = new ArrayList<>();
+
+        return Futures.transform(fetch(keys, result::add), (Boolean fetchResult) -> result);
+    }
+
+    protected ListenableFuture<Boolean> fetch(List<Object> keys, Consumer<V> consumer) {
         BoundStatement boundStatement;
 
-        Select select = QueryBuilder
-                .select()
-                .all()
-                .from(getEntityMetadata().getTableName());
+        Select select = QueryBuilder.select()
+                                    .all()
+                                    .from(getEntityMetadata().getTableName());
 
         int parametersLength = keys.size();
 
         if (parametersLength > 0) {
 
             if (parametersLength < getEntityMetadata().getMinPrimaryKeys() || parametersLength > getEntityMetadata().getPrimaryKeysSize()) {
-                throw new QueryException(String.format("Invalid number of parameters at least composite keys must me provided. Expected: %d Actual: %d", getEntityMetadata().getPartitionKeysSize(), parametersLength));
+                throw new QueryException(String.format("Invalid number of parameters at least composite keys must me provided. Expected: %d Actual: %d", getEntityMetadata().getPartitionKeySize(), parametersLength));
             }
 
             Select.Where where = null;
@@ -292,93 +387,49 @@ public class DataProvider<V> {
             assert where != null;
 
             PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+            prepare.setConsistencyLevel(getReadConsistencyLevel());
+
             boundStatement = new BoundStatement(prepare);
 
             bindPrimaryKeysParameters(keys, boundStatement);
 
         } else {
             PreparedStatement statement = getCassandraClient().prepare(select.getQueryString());
+            statement.setConsistencyLevel(getReadConsistencyLevel());
 
             boundStatement = new BoundStatement(statement);
         }
 
         boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
-        boundStatement.setConsistencyLevel(getEntityMetadata().getConsistencyLevel());
+        boundStatement.setConsistencyLevel(getEntityMetadata().getReadConsistencyLevel());
 
-        return Futures.transform(getCassandraClient().executeAsync(boundStatement), (ResultSet resultSet) -> {
-            List<ListenableFuture<Boolean>> futureList = new ArrayList<>();
+        ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
 
-            lazyFetch(resultSet, row -> {
-                V instance = mapToObject(row);
+        return Futures.transform(resultSetFuture, (ResultSet resultSet) -> {
+            Iterator<Row> iterator = resultSet.iterator();
 
+            while (iterator.hasNext()) {
+                Row next = iterator.next();
 
-                ListenableFuture<Boolean> listenableFuture = executorService.submit(() -> {
-                    consumer.accept(instance);
-                    return true;
-                });
+                V instance = mapToObject(next);
 
-                futureList.add(listenableFuture);
-            });
+                consumer.accept(instance);
+            }
 
-            ListenableFuture<List<Boolean>> listenableFutures = Futures.successfulAsList(futureList);
-
-            return Futures.transform(listenableFutures, (List<Boolean> resultStatus) -> true, executorService);
+            return true;
         });
     }
 
-    protected void bindPrimaryKeysParameters(List<Object> keys, BoundStatement boundStatement) {
-        for (int i = 0; i < keys.size(); i++) {
-            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
-
-            if (!primaryKey.isPresent()) {
-                throw new QueryException(String.format("Invalid primary key index: %d", i));
-            }
-
-            PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
-
-            boundStatement.setBytesUnsafe(i, getEntityMetadata().serialize(primaryKeyMetadata, keys.get(i)));
-        }
-    }
-
-    protected V mapToObject(Row row) {
-        V instance = null;
-
-        try {
-            instance = clazz.newInstance();
-
-            List<ColumnMetadata> columns = getEntityMetadata().getFieldMetaData();
-
-            for (ColumnMetadata column : columns) {
-                if (row.getColumnDefinitions().contains(column.getName())) {
-
-                    Object deserializedValue = entityMetadata.deserialize(column, row.getBytesUnsafe(column.getName()));
-
-                    if (deserializedValue == null) {
-                        continue;
-                    } else if (deserializedValue instanceof ByteBuffer) {
-                        String s = Bytes.toHexString((ByteBuffer) deserializedValue);
-
-                        deserializedValue = Bytes.fromHexString(s);
-                    }
-                    Method writeMethod = column.getWriteMethod();
-
-
-                    if (writeMethod == null || instance == null) {
-                        LOGGER.warn("Write method is null");
-                    } else {
-                        try {
-                            writeMethod.invoke(instance, deserializedValue);
-                        } catch (InvocationTargetException | IllegalAccessException e) {
-                            LOGGER.warn("Cant invoker write method", e);
-                        }
-                    }
-                }
-            }
-
-        } catch (InstantiationException | IllegalAccessException e) {
-            LOGGER.warn("Cant retrieve entity instance", e);
-        }
-        return instance;
+    /**
+     * Map row result to object
+     *
+     * @param row ResultSet row
+     *
+     * @return Mapped object or null if can't map fields
+     */
+    @Nullable
+    protected V mapToObject(@NotNull Row row) {
+        return mapToObjectFunction.apply(row);
     }
 
     @NotNull
@@ -386,64 +437,26 @@ public class DataProvider<V> {
         return cassandraClient;
     }
 
-    /**
-     * Lazy fetch all result and send one by one results asynchronously  to consumer
-     *
-     * @param resultSet ResultSet
-     * @param consumer  Row(result) consumer
-     */
-    protected void lazyFetch(ResultSet resultSet, Consumer<Row> consumer) {
-        AtomicLong fetchedRows = new AtomicLong(0);
-
-        Iterator<Row> iterator = resultSet.iterator();
-
-
-        for (; ; ) {
-            Row next;
-            try {
-                next = iterator.next();
-            } catch (NoSuchElementException e) {
-                break;
-            }
-
-            if (next == null) {
-//                LOGGER.warn("Row is null, skipping...");
-            } else {
-                fetchedRows.getAndIncrement();
-
-                consumer.accept(next);
-            }
-
-            if (!iterator.hasNext()) {
-                break;
-            }
-
-
-            boolean isExhausted = resultSet.isExhausted();
-            boolean isFullyFetched = resultSet.isFullyFetched();
-            int availableWithoutFetching = resultSet.getAvailableWithoutFetching();
-            long fetchedRowsCount = fetchedRows.get();
-
-//            LOGGER.debug("Is exhausted: {} Is fully fetched {} Available: {} fetched: {}", isExhausted, isFullyFetched, availableWithoutFetching, fetchedRowsCount);
-        }
-    }
-
     @NotNull
     final protected EntityMetadata getEntityMetadata() {
         return entityMetadata;
     }
 
-    @NotNull
-    protected ListeningExecutorService getExecutorService() {
-        return executorService;
+    protected ConsistencyLevel getReadConsistencyLevel() {
+        return getEntityMetadata().getReadConsistencyLevel();
     }
 
-    protected ConsistencyLevel getConsistencyLevel() {
-        return getEntityMetadata().getConsistencyLevel();
+    protected ConsistencyLevel getWriteConsistencyLevel() {
+        return getEntityMetadata().getWriteConsistencyLevel();
     }
 
     protected <Input> ListenableFuture<Boolean> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture) {
-        return monitorFuture(timer, listenableFuture, new ResultSetMonitorFunction<Input>());
+        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
+            @Override
+            public Boolean apply(Input input) {
+                return true;
+            }
+        });
     }
 
     /**
@@ -460,25 +473,135 @@ public class DataProvider<V> {
     protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
         Futures.addCallback(listenableFuture, new TimerFutureCallback<Input>(timer));
 
-        return Futures.transform(listenableFuture, new JdkFunctionWrapper<Input, Output>(userCallback), getExecutorService());
+        return Futures.transform(listenableFuture, new JdkFunctionWrapper<Input, Output>(userCallback));
     }
 
+    private long buildCacheKey(List<Object> keys) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
+
+            for (Object key : keys) {
+                if (key instanceof ByteBuffer) {
+                    objectOutputStream.write(((ByteBuffer) key).array());
+                } else {
+                    objectOutputStream.writeObject(key);
+                }
+            }
+
+            return HASH_FUNCTION.hashBytes(out.toByteArray()).asLong();
+
+        } catch (IOException e) {
+            LOGGER.warn("Can't build cache key", e);
+
+            throw new CanNotBuildEntryCacheKey(getEntityClass(), e);
+        }
+    }
+
+    private void bindPrimaryKeysParameters(@NotNull List<Object> keys, @NotNull BoundStatement boundStatement) {
+        for (int i = 0; i < keys.size(); i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (!primaryKey.isPresent()) {
+                throw new QueryException(String.format("Invalid primary key index: %d", i));
+            }
+
+            PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+            boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(keys.get(i)));
+        }
+    }
+
+    @NotNull
+    private BoundStatement getBoundStatement(@NotNull V entity, @NotNull List<ColumnMetadata> columns, @NotNull PreparedStatement prepare) {
+        BoundStatement boundStatement = new BoundStatement(prepare);
+        boundStatement.setConsistencyLevel(getEntityMetadata().getWriteConsistencyLevel());
+
+        for (int i = 0; i < columns.size(); i++) {
+            ColumnMetadata column = columns.get(i);
+
+            try {
+                Object value = column.getReadMethod().invoke(entity);
+                boundStatement.setBytesUnsafe(i, column.serialize(value));
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                LOGGER.warn("Can't invoke read method", e);
+            }
+        }
+
+        return boundStatement;
+    }
+
+    /**
+     * Build entity metadata from entity class
+     *
+     * @param clazz Entity class
+     *
+     * @return EntityMetadata
+     *
+     * @throws MetadataException
+     */
     private EntityMetadata build(Class<V> clazz) throws MetadataException {
         return EntityMetadata.buildEntityMetadata(clazz, getCassandraClient());
     }
+
 
     private enum MetricsType implements MetricsFactory.Type {
         DATA_PROVIDER_FIND_ONE,
         DATA_PROVIDER_SAVE,
         DATA_PROVIDER_REMOVE,
-        DATA_PROVIDER_FIND,
+        DATA_PROVIDER_FIND, CACHEABLE_DATA_PROVIDER_CREATE_KEY, DATA_PROVIDER_CREATE_KEY,
     }
 
-    private static class ResultSetMonitorFunction<Input> implements Function<Input, Boolean> {
+    /**
+     * Map data from {@link Row} to object
+     *
+     * @param <ReturnValue>
+     */
+    private static class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
+        private final Class<ReturnValue> clazz;
+        private final EntityMetadata entityMetadata;
+
+        private MapToObjectFunction(Class<ReturnValue> clazz, EntityMetadata entityMetadata) {
+            this.clazz = clazz;
+            this.entityMetadata = entityMetadata;
+        }
 
         @Override
-        public Boolean apply(Input input) {
-            return true;
+        public ReturnValue apply(Row row) {
+            ReturnValue instance = null;
+
+            try {
+                instance = clazz.newInstance();
+
+                List<ColumnMetadata> columns = entityMetadata.getFieldMetaData();
+
+                for (ColumnMetadata column : columns) {
+                    if (row.getColumnDefinitions().contains(column.getName())) {
+
+                        Object deserializedValue = column.deserialize(row.getBytesUnsafe(column.getName()));
+
+                        if (deserializedValue == null) { // don't set null value
+                            continue;
+                        }
+
+                        Method writeMethod = column.getWriteMethod();
+
+                        if (writeMethod == null || instance == null) {
+                            LOGGER.warn("Write method for {}#{} is null", clazz.getName(), column.getName());
+                        } else {
+                            try {
+                                writeMethod.invoke(instance, deserializedValue);
+                            } catch (InvocationTargetException | IllegalAccessException e) {
+                                LOGGER.warn("Cant invoker write method", e);
+                            }
+                        }
+                    }
+                }
+
+            } catch (InstantiationException | IllegalAccessException e) {
+                LOGGER.warn("Cant retrieve entity instance", e);
+            }
+            return instance;
         }
     }
 

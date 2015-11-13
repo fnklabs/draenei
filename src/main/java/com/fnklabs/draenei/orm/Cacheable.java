@@ -6,7 +6,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.Serializable;
 
 /**
- * Entity Cacheable interface
+ * Cacheable entity interface
  */
 public interface Cacheable extends Serializable {
     /**

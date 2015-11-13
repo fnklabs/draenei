@@ -6,7 +6,7 @@ apply plugin: 'signing'
 if (hasProperty("teamcity")) {
     project.ext.buildVersion = teamcity["build.number"]
 } else {
-    project.ext.buildVersion = '0.1.7.12'
+    project.ext.buildVersion = '0.2.0'
 }
 
 version = project.ext.buildVersion
@@ -15,8 +15,8 @@ group = 'com.fnklabs'
 println("App module version:" + project.ext.buildVersion)
 
 repositories {
-    mavenLocal()
     mavenCentral()
+    mavenLocal()
 }
 
 buildscript {
@@ -57,6 +57,9 @@ dependencies {
 
     compile 'com.hazelcast:hazelcast:3.5.2'
     compile 'com.hazelcast:hazelcast-client:3.5.2'
+
+    compile 'org.apache.lucene.morphology:russian:1.0'
+    compile 'org.apache.lucene.morphology:english:1.0'
 }
 
 jar {

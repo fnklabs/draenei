@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Cacheable DataProvider EventListener
  *
- * @param <T>
+ * @param <T> DataProvider class type
  */
 public interface EventListener<T> {
     /**
