@@ -14,7 +14,6 @@ import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -40,7 +39,7 @@ class EntityMetadata {
     private final ConsistencyLevel writeConsistencyLevel;
 
     @NotNull
-    private final HashMap<String, List<ColumnMetadata>> columnsMetadata = new HashMap<>();
+    private final HashMap<String, ColumnMetadata> columnsMetadata = new HashMap<>();
     /**
      * DataStax table metadata need to serialize and deserialize data
      */
@@ -68,26 +67,19 @@ class EntityMetadata {
         return columnsMetadata.entrySet()
                               .stream()
                               .mapToInt(entry -> {
-                                          boolean anyMatch = entry.getValue()
-                                                                  .stream()
-                                                                  .anyMatch(item -> item instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) item).isPartitionKey());
-
-                                          return anyMatch ? 1 : 0;
+                                          return entry instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) entry).isPartitionKey() ? 1 : 0;
                                       }
-                              ).sum();
+                              )
+                              .sum();
     }
 
     protected void addColumnMetadata(@NotNull ColumnMetadata columnMetadata) {
-        List<ColumnMetadata> metadataList = columnsMetadata.getOrDefault(columnMetadata.getName(), new ArrayList<>());
-        metadataList.add(columnMetadata);
+        columnsMetadata.put(columnMetadata.getName(), columnMetadata);
 
-        columnsMetadata.put(columnMetadata.getName(), metadataList);
-
-        metadataList.forEach(metadata -> {
-            if (metadata instanceof PrimaryKeyMetadata) {
-                primaryKeys.put(((PrimaryKeyMetadata) metadata).getOrder(), (PrimaryKeyMetadata) metadata);
-            }
-        });
+        if (columnMetadata instanceof PrimaryKeyMetadata) {
+            PrimaryKeyMetadata primaryKeyMetadata = (PrimaryKeyMetadata) columnMetadata;
+            primaryKeys.put(primaryKeyMetadata.getOrder(), primaryKeyMetadata);
+        }
     }
 
     protected Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
@@ -106,9 +98,7 @@ class EntityMetadata {
     protected List<ColumnMetadata> getFieldMetaData() {
         return columnsMetadata.entrySet()
                               .stream()
-                              .flatMap(entry -> {
-                                  return entry.getValue().stream().filter(item -> item.getClass().equals(ColumnMetadata.class));
-                              })
+                              .map(entry -> entry.getValue())
                               .collect(Collectors.toList());
     }
 
