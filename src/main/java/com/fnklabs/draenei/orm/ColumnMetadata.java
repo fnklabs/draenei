@@ -143,7 +143,8 @@ class ColumnMetadata<T> {
     protected static ColumnMetadata buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor,
                                                         @NotNull Class clazz,
                                                         @NotNull TableMetadata tableMetadata) throws NoSuchFieldException {
-        Field field = clazz.getDeclaredField(propertyDescriptor.getName());
+        String name = propertyDescriptor.getName();
+        Field field = clazz.getDeclaredField(name);
 
         Column columnAnnotation = field.getDeclaredAnnotation(Column.class);
 
@@ -156,7 +157,7 @@ class ColumnMetadata<T> {
             if (primaryKeyAnnotation != null) {
                 PrimaryKeyMetadata<?> primaryKeyMetadata = new PrimaryKeyMetadata<>(
                         propertyDescriptor,
-                        columnAnnotation.name(),
+                        columnName,
                         primaryKeyAnnotation.order(),
                         primaryKeyAnnotation.isPartitionKey(),
                         field.getType(),
@@ -179,6 +180,7 @@ class ColumnMetadata<T> {
         if (StringUtils.isEmpty(columnName)) {
             columnName = propertyDescriptor.getName();
         }
+
         return columnName;
     }
 }

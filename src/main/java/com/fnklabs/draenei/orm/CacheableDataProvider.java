@@ -123,11 +123,11 @@ public class CacheableDataProvider<T extends Cacheable> extends DataProvider<T> 
 
         Timer.Context putAsyncTimer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_ASYNC).time();
 
-        ListenableFuture<Boolean> putToCacheFuture = executeOnEntry(entity, new PutToCacheOperation<Long, T>(entity));
+        ListenableFuture<T> putToCacheFuture = executeOnEntry(entity, new PutToCacheOperation<Long, T>(entity));
 
         monitorFuture(putAsyncTimer, putToCacheFuture);
 
-        ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (Boolean result) -> {
+        ListenableFuture<Boolean> saveFuture = Futures.transform(putToCacheFuture, (T result) -> {
             return super.saveAsync(entity);
         });
 

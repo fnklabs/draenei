@@ -129,42 +129,6 @@ public class CassandraClient {
         return getKeyspaceMetadata(keyspace).getTable(tablename);
     }
 
-    public void dumpMetrics() {
-        Metrics metrics = getSession().getCluster().getMetrics();
-
-        Metrics.Errors errorMetrics = metrics.getErrorMetrics();
-
-        LOGGER.warn("Session connections: {}\n" +
-                        "Queries: {} Errors: {}\n" +
-                        "Connected to host: {}\n" +
-                        "Known hosts: {}\n" +
-                        "Request timer: {}\n" +
-                        "Error metrics\n" +
-                        "Connection errors: {}" +
-                        "\nWrite timeouts: {} Read timeouts: {} Unavailables: {} Other: {}" +
-                        "\nRetries: {} Retries on write timeout: {} Retries on read timeout: {} Retries on unavailable {}" +
-                        "\nIgnores: {} Ignores on write timeout: {} Ignores on read timeout: {} Ignore on unavailable {}",
-                metrics.getOpenConnections().getValue(),
-                getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).getCount(), getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_ERRORS).getCount(),
-                metrics.getConnectedToHosts().getValue(),
-                metrics.getKnownHosts().getValue(),
-                metrics.getRequestsTimer().getOneMinuteRate(),
-
-
-                errorMetrics.getConnectionErrors().getCount(),
-                errorMetrics.getWriteTimeouts().getCount(), errorMetrics.getReadTimeouts().getCount(), errorMetrics.getUnavailables().getCount(), errorMetrics.getOthers()
-                                                                                                                                                              .getCount(),
-                errorMetrics.getRetries().getCount(), errorMetrics.getRetriesOnWriteTimeout().getCount(), errorMetrics.getRetriesOnReadTimeout()
-                                                                                                                      .getCount(), errorMetrics.getRetriesOnUnavailable()
-                                                                                                                                               .getCount(),
-                errorMetrics.getIgnores().getCount(), errorMetrics.getIgnoresOnWriteTimeout().getCount(), errorMetrics.getIgnoresOnReadTimeout()
-                                                                                                                      .getCount(), errorMetrics.getIgnoresOnUnavailable()
-                                                                                                                                               .getCount());
-
-
-        LOGGER.warn("Active statements: {}", getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).getCount());
-    }
-
     @NotNull
     public PreparedStatement prepare(@NotNull String query) {
         return preparedStatementsMap.compute(query, new ComputePreparedStatement());
@@ -193,9 +157,8 @@ public class CassandraClient {
     }
 
     public ResultSetFuture executeAsync(@NotNull String query) throws IllegalStateException {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE_ASYNC).time();
 
-        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
 
         ResultSetFuture resultSetFuture = getSession().executeAsync(query);
@@ -207,19 +170,6 @@ public class CassandraClient {
         return resultSetFuture;
     }
 
-    public ResultSetFuture executeAsync(@NotNull BoundStatement boundStatement) throws IllegalStateException {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
-
-        getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
-        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
-
-        ResultSetFuture resultSetFuture = getSession().executeAsync(boundStatement);
-
-        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(boundStatement.preparedStatement().getQueryString()));
-        monitorFuture(time, resultSetFuture);
-
-        return resultSetFuture;
-    }
 
     /**
      * Execute statement
@@ -230,13 +180,15 @@ public class CassandraClient {
      */
     @NotNull
     public ResultSetFuture executeAsync(@NotNull Statement statement) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
+        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE_ASYNC).time();
 
-        getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
+        getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
 
         ResultSetFuture resultSetFuture = getSession().executeAsync(statement);
 
-        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(statement.getKeyspace()));
+        String query = (statement instanceof BoundStatement) ? ((BoundStatement) statement).preparedStatement().getQueryString() : statement.toString();
+
+        Futures.addCallback(resultSetFuture, new StatementExecutionCallback(query));
         monitorFuture(time, resultSetFuture);
 
         return resultSetFuture;
@@ -306,6 +258,7 @@ public class CassandraClient {
         CASSANDRA_QUERIES_COUNT,
         CASSANDRA_QUERIES_ERRORS,
         CASSANDRA_PROCESSING_QUERIES,
+        CASSANDRA_EXECUTE_ASYNC, CASSANDRA_PREPARE_STMT,
     }
 
     /**
@@ -342,7 +295,9 @@ public class CassandraClient {
         @Override
         public PreparedStatement apply(String s, PreparedStatement preparedStatement) {
             if (preparedStatement == null) {
+                Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CASSANDRA_PREPARE_STMT).time();
                 preparedStatement = getSession().prepare(s);
+                timer.stop();
             }
 
             return preparedStatement;
@@ -358,19 +313,18 @@ public class CassandraClient {
 
         @Override
         public void onSuccess(ResultSet result) {
-            decrementActiveStatements();
+            getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).dec();
+            getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
         }
 
         @Override
         public void onFailure(Throwable t) {
             LOGGER.warn("Cant execute bound statement: " + query, t);
 
+            getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
             getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_ERRORS).inc();
-            decrementActiveStatements();
+            getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).dec();
         }
 
-        protected void decrementActiveStatements() {
-            getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
-        }
     }
 }

@@ -67,7 +67,7 @@ class EntityMetadata {
         return columnsMetadata.entrySet()
                               .stream()
                               .mapToInt(entry -> {
-                                          return entry instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) entry).isPartitionKey() ? 1 : 0;
+                                          return entry.getValue() instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) entry.getValue()).isPartitionKey() ? 1 : 0;
                                       }
                               )
                               .sum();
@@ -208,6 +208,4 @@ class EntityMetadata {
 
         return entityMetadata;
     }
-
-
 }
