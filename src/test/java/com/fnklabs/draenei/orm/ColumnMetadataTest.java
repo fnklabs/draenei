@@ -1,8 +1,6 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.TableMetadata;
-import com.fnklabs.draenei.orm.annotations.Column;
-import com.fnklabs.draenei.orm.annotations.PrimaryKey;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -10,6 +8,7 @@ import org.mockito.Mockito;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
+import java.util.UUID;
 
 public class ColumnMetadataTest {
 
@@ -32,17 +31,66 @@ public class ColumnMetadataTest {
         }
     }
 
-    private static class TestEntity {
-        @PrimaryKey
-        @Column
-        private int id;
+    @Test
+    public void testRead() throws Exception {
+        BeanInfo beanInfo = Introspector.getBeanInfo(TestEntity.class);
 
-        public int getId() {
-            return id;
+        PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
+
+        for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
+            if (propertyDescriptor.getName().equals("class")) {
+                continue;
+            }
+
+            ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+
+            Assert.assertNotNull(columnMetadata);
+
+            Assert.assertEquals("id", columnMetadata.getName());
+
+            UUID id = UUID.randomUUID();
+
+            TestEntity entity = new TestEntity();
+            entity.setId(id);
+
+            UUID uuid = (UUID) columnMetadata.readValue(entity);
+
+            Assert.assertEquals(id, uuid);
+        }
+    }
+
+    @Test
+    public void testWrite() throws Exception {
+        BeanInfo beanInfo = Introspector.getBeanInfo(TestEntity.class);
+
+        PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
+
+        for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
+            if (propertyDescriptor.getName().equals("class")) {
+                continue;
+            }
+
+            ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+
+            Assert.assertNotNull(columnMetadata);
+
+            Assert.assertEquals("id", columnMetadata.getName());
+
+            UUID id = UUID.randomUUID();
+
+            TestEntity entity = new TestEntity();
+            entity.setId(id);
+
+            UUID uuid = (UUID) columnMetadata.readValue(entity);
+
+            Assert.assertEquals(id, uuid);
+
+            UUID newId = UUID.randomUUID();
+
+            columnMetadata.writeValue(entity, newId);
+
+            Assert.assertEquals(newId, entity.getId());
         }
 
-        public void setId(int id) {
-            this.id = id;
-        }
     }
 }

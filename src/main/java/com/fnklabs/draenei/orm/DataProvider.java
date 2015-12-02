@@ -17,8 +17,6 @@ import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import com.hazelcast.core.HazelcastInstance;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -28,8 +26,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Consumer;
@@ -49,26 +45,17 @@ public class DataProvider<V> {
     private final EntityMetadata entityMetadata;
 
     @NotNull
-    private final CassandraClient cassandraClient;
+    private final CassandraClientFactory cassandraClient;
 
     @NotNull
     private final MetricsFactory metricsFactory;
 
     @NotNull
-    private final HazelcastInstance hazelcastInstance;
-
-    @NotNull
     private final Function<Row, V> mapToObjectFunction;
 
-    public DataProvider(
-            @NotNull Class<V> clazz,
-            @NotNull CassandraClient cassandraClient,
-            @NotNull HazelcastInstance hazelcastInstance,
-            @NotNull MetricsFactory metricsFactory
-    ) {
+    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull MetricsFactory metricsFactory) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClient;
-        this.hazelcastInstance = hazelcastInstance;
         this.metricsFactory = metricsFactory;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
@@ -87,14 +74,8 @@ public class DataProvider<V> {
             if (primaryKey.isPresent()) {
                 PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
 
-                Method readMethod = primaryKeyMetadata.getReadMethod();
-
-                try {
-                    Object value = readMethod.invoke(entity);
-                    keys.add(value);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    LOGGER.warn(String.format("Can't invoke read method: %s#%s", entity.getClass(), readMethod.getName()), e);
-                }
+                Object value = primaryKeyMetadata.readValue(entity);
+                keys.add(value);
             }
         }
 
@@ -136,10 +117,7 @@ public class DataProvider<V> {
         } catch (SyntaxError e) {
             LOGGER.warn("Can't prepare query: " + queryString, e);
 
-            SettableFuture<Boolean> booleanSettableFuture = SettableFuture.<Boolean>create();
-            booleanSettableFuture.setException(e);
-
-            resultFuture = booleanSettableFuture;
+            resultFuture = Futures.immediateFailedFuture(e);
         }
 
         monitorFuture(saveAsyncTimer, resultFuture);
@@ -197,14 +175,9 @@ public class DataProvider<V> {
 
             PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
 
-            Method readMethod = primaryKeyMetadata.getReadMethod();
+            Object value = primaryKeyMetadata.readValue(entity);
 
-            try {
-                Object value = readMethod.invoke(entity);
-                boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(value));
-            } catch (IllegalAccessException | InvocationTargetException | NullPointerException e) {
-                LOGGER.warn("Can't invoke read method", e);
-            }
+            boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(value));
         }
 
         ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
@@ -434,7 +407,7 @@ public class DataProvider<V> {
 
     @NotNull
     protected CassandraClient getCassandraClient() {
-        return cassandraClient;
+        return cassandraClient.create();
     }
 
     @NotNull
@@ -520,12 +493,9 @@ public class DataProvider<V> {
         for (int i = 0; i < columns.size(); i++) {
             ColumnMetadata column = columns.get(i);
 
-            try {
-                Object value = column.getReadMethod().invoke(entity);
-                boundStatement.setBytesUnsafe(i, column.serialize(value));
-            } catch (IllegalAccessException | InvocationTargetException e) {
-                LOGGER.warn("Can't invoke read method", e);
-            }
+            Object value = column.readValue(entity);
+
+            boundStatement.setBytesUnsafe(i, column.serialize(value));
         }
 
         return boundStatement;
@@ -580,21 +550,7 @@ public class DataProvider<V> {
 
                         Object deserializedValue = column.deserialize(row.getBytesUnsafe(column.getName()));
 
-                        if (deserializedValue == null) { // don't set null value
-                            continue;
-                        }
-
-                        Method writeMethod = column.getWriteMethod();
-
-                        if (writeMethod == null || instance == null) {
-                            LOGGER.warn("Write method for {}#{} is null", clazz.getName(), column.getName());
-                        } else {
-                            try {
-                                writeMethod.invoke(instance, deserializedValue);
-                            } catch (InvocationTargetException | IllegalAccessException e) {
-                                LOGGER.warn("Cant invoker write method", e);
-                            }
-                        }
+                        column.writeValue(instance, deserializedValue);
                     }
                 }
 

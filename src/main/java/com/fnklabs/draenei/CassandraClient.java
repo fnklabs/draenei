@@ -6,7 +6,6 @@ import com.datastax.driver.core.policies.*;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -39,20 +38,17 @@ public class CassandraClient {
      */
     private final Session session;
 
-    private final ListeningExecutorService executorService;
-
     private final MetricsFactory metricsFactory;
 
     /**
      * Construct cassandra client
      *
-     * @param username        Username
-     * @param password        Password
-     * @param keyspace        Default keyspace
-     * @param hosts           Cassandra nodes
-     * @param metricsFactory  Metrics Factory that will be used for metrics
-     * @param executorService Client executor service
-     * @param hostDistance    Cassandra host distance
+     * @param username       Username
+     * @param password       Password
+     * @param keyspace       Default keyspace
+     * @param hosts          Cassandra nodes
+     * @param metricsFactory Metrics Factory that will be used for metrics
+     * @param hostDistance   Cassandra host distance
      *
      * @throws IllegalArgumentException if can't connect to cluster
      */
@@ -61,11 +57,9 @@ public class CassandraClient {
                            @NotNull String keyspace,
                            @NotNull String hosts,
                            @NotNull MetricsFactory metricsFactory,
-                           @NotNull ListeningExecutorService executorService,
                            @NotNull HostDistance hostDistance) {
 
         this.metricsFactory = metricsFactory;
-        this.executorService = executorService;
 
         Cluster.Builder builder = Cluster.builder()
                                          .withPort(9042)
@@ -108,9 +102,8 @@ public class CassandraClient {
         }
     }
 
-    public CassandraClient(@NotNull Session session, @NotNull ListeningExecutorService executorService, @NotNull MetricsFactory metricsFactory) {
+    public CassandraClient(@NotNull Session session, @NotNull MetricsFactory metricsFactory) {
         this.session = session;
-        this.executorService = executorService;
         this.metricsFactory = metricsFactory;
     }
 
@@ -134,6 +127,13 @@ public class CassandraClient {
         return preparedStatementsMap.compute(query, new ComputePreparedStatement());
     }
 
+    /**
+     * Execute CQL query
+     *
+     * @param query CQL query
+     *
+     * @return Result set
+     */
     public ResultSet execute(@NotNull String query) {
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT).inc();
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
@@ -144,6 +144,13 @@ public class CassandraClient {
         return resultSet;
     }
 
+    /**
+     * Execute statement
+     *
+     * @param statement Statement
+     *
+     * @return Execution result set
+     */
     public ResultSet execute(@NotNull Statement statement) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE).time();
 
@@ -156,7 +163,14 @@ public class CassandraClient {
         return resultSetFuture;
     }
 
-    public ResultSetFuture executeAsync(@NotNull String query) throws IllegalStateException {
+    /**
+     * Execute cql query asynchronously
+     *
+     * @param query CQL query
+     *
+     * @return ResultSetFuture
+     */
+    public ResultSetFuture executeAsync(@NotNull String query) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE_ASYNC).time();
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES).inc();
@@ -172,7 +186,7 @@ public class CassandraClient {
 
 
     /**
-     * Execute statement
+     * Execute statement asynchronously
      *
      * @param statement Statement that must be executed
      *
@@ -261,6 +275,20 @@ public class CassandraClient {
         CASSANDRA_EXECUTE_ASYNC, CASSANDRA_PREPARE_STMT,
     }
 
+    @NotNull
+    protected static LoadBalancingPolicy getLoadBalancingPolicy(@NotNull final HostDistance hostDistance) {
+        LatencyAwarePolicy.Builder latencyPolicyBuilder = LatencyAwarePolicy.builder(new RoundRobinPolicy() {
+            @Override
+            public HostDistance distance(Host host) {
+                return hostDistance;
+            }
+        });
+
+        LatencyAwarePolicy latencyAwarePolicy = latencyPolicyBuilder.build();
+
+        return new TokenAwarePolicy(latencyAwarePolicy);
+    }
+
     /**
      * Create session
      *
@@ -274,20 +302,6 @@ public class CassandraClient {
         session.init();
 
         return session;
-    }
-
-    @NotNull
-    private static LoadBalancingPolicy getLoadBalancingPolicy(@NotNull final HostDistance hostDistance) {
-        LatencyAwarePolicy.Builder latencyPolicyBuilder = LatencyAwarePolicy.builder(new RoundRobinPolicy() {
-            @Override
-            public HostDistance distance(Host host) {
-                return hostDistance;
-            }
-        });
-
-        LatencyAwarePolicy latencyAwarePolicy = latencyPolicyBuilder.build();
-
-        return new TokenAwarePolicy(latencyAwarePolicy);
     }
 
     private class ComputePreparedStatement implements BiFunction<String, PreparedStatement, PreparedStatement> {

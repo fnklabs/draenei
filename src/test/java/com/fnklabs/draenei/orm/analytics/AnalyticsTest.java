@@ -5,11 +5,11 @@ import com.datastax.driver.core.HostDistance;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.Metrics;
 import com.fnklabs.draenei.MetricsFactory;
+import com.fnklabs.draenei.orm.CassandraClientFactory;
 import com.fnklabs.draenei.orm.DataProvider;
 import com.fnklabs.draenei.orm.TestEntity;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.*;
 import org.jetbrains.annotations.NotNull;
@@ -35,7 +35,7 @@ public class AnalyticsTest {
     @Test
     public void testCompute() throws Exception {
         Metrics metricsFactory = new Metrics();
-        CassandraClient cassandraClient = new CassandraClient("", "", "test", "10.211.55.19", metricsFactory, MoreExecutors.newDirectExecutorService(), HostDistance.LOCAL);
+        CassandraClient cassandraClient = new CassandraClient("", "", "test", "10.211.55.19", metricsFactory, HostDistance.LOCAL);
 
         AnalyticsManagedContext managedContext = new AnalyticsManagedContext();
 
@@ -52,7 +52,7 @@ public class AnalyticsTest {
 
         managedContext.setAnalyticsContext(analytics);
 
-        DataProvider<TestEntity> testEntityDataProvider = new DataProvider<>(TestEntity.class, cassandraClient, hazelcastInstance, metricsFactory);
+        DataProvider<TestEntity> testEntityDataProvider = new DataProvider<>(TestEntity.class, mock(CassandraClientFactory.class), metricsFactory);
 
         ListenableFuture<Map<Boolean, Integer>> computeFuture = analytics.compute(testEntityDataProvider, new ComputeTask<TestEntity, Boolean, Integer, Integer>() {
             @NotNull

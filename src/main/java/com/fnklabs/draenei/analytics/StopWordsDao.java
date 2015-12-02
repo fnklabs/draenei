@@ -11,6 +11,7 @@ public abstract class StopWordsDao extends CacheableDataProvider<StopWord> {
                         HazelcastInstance hazelcastInstance,
                         MetricsFactory metricsFactory,
                         ListeningExecutorService executorService) {
-        super(StopWord.class, cassandraClient, hazelcastInstance, metricsFactory, executorService);
+        // todo change it
+        super(StopWord.class, null, null, metricsFactory);
     }
 }

@@ -155,7 +155,7 @@ public class Analytics {
     }
 
     protected <K> DataProvider<K> getDataProvider(Class<K> entityClass) {
-        return new DataProvider<>(entityClass, cassandraClient, hazelcastInstance, metricsFactory);
+        return null;// todo new DataProvider<>(entityClass, cassandraClient, metricsFactory);
     }
 
     private IMap<UUID, JobStatus> getJobMap() {

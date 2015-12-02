@@ -1,14 +1,13 @@
 package com.fnklabs.draenei.analytics;
 
-import com.fnklabs.draenei.orm.Cacheable;
 import com.fnklabs.draenei.orm.annotations.Column;
 import com.fnklabs.draenei.orm.annotations.PrimaryKey;
 import com.fnklabs.draenei.orm.annotations.Table;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+
+import java.io.Serializable;
 
 @Table(name = "stop_word")
-public class StopWord implements Cacheable {
+public class StopWord implements Serializable {
 
     @PrimaryKey
     @Column(name = "stop_word")
@@ -32,14 +31,4 @@ public class StopWord implements Cacheable {
     }
 
 
-    @Nullable
-    @Override
-    public Long getCacheKey() {
-        return null;
-    }
-
-    @Override
-    public void setCacheKey(@NotNull Long id) {
-
-    }
 }

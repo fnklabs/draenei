@@ -60,6 +60,9 @@ dependencies {
 
     compile 'org.apache.lucene.morphology:russian:1.0'
     compile 'org.apache.lucene.morphology:english:1.0'
+
+    compile 'org.apache.ignite:ignite-core:1.4.0'
+    compile 'org.apache.ignite:ignite-slf4j:1.4.0'
 }
 
 jar {
