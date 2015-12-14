@@ -25,9 +25,10 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -37,19 +38,15 @@ public class DataProvider<V> {
      * hashing function to build Entity cache id
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
-
+    private static final Map<Class, DataProvider> dataProvidersRegistry = new ConcurrentHashMap<>();
     @NotNull
     private final Class<V> clazz;
-
     @NotNull
     private final EntityMetadata entityMetadata;
-
     @NotNull
     private final CassandraClientFactory cassandraClient;
-
     @NotNull
     private final MetricsFactory metricsFactory;
-
     @NotNull
     private final Function<Row, V> mapToObjectFunction;
 
@@ -59,6 +56,18 @@ public class DataProvider<V> {
         this.metricsFactory = metricsFactory;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
+    }
+
+    public static <T> DataProvider<T> getDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull MetricsFactory metricsFactory) {
+        return dataProvidersRegistry.compute(clazz, new BiFunction<Class, DataProvider, DataProvider>() {
+            @Override
+            public DataProvider apply(Class aClass, DataProvider dataProvider) {
+                if (dataProvider == null) {
+                    return new DataProvider<T>(clazz, cassandraClientFactory, metricsFactory);
+                }
+                return dataProvider;
+            }
+        });
     }
 
     public long buildCacheKey(@NotNull V entity) {
@@ -227,7 +236,7 @@ public class DataProvider<V> {
         return resultFuture;
     }
 
-    public <UserCallback extends Serializable & Consumer<V>> Integer load(long startToken, long endToken, UserCallback consumer) {
+    public <UserCallback extends Consumer<V>> int load(long startToken, long endToken, UserCallback consumer) {
         Select select = QueryBuilder.select()
                                     .all()
                                     .from(getEntityMetadata().getTableName());
@@ -276,8 +285,9 @@ public class DataProvider<V> {
 
             V instance = mapToObject(next);
 
-            consumer.accept(instance);
-
+            if (instance != null) {
+                consumer.accept(instance);
+            }
             loadedItems++;
         }
 

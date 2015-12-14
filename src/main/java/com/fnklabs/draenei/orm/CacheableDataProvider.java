@@ -5,13 +5,8 @@ import com.fnklabs.draenei.MetricsFactory;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
-import org.apache.ignite.cache.CacheAtomicityMode;
-import org.apache.ignite.cache.CacheMemoryMode;
-import org.apache.ignite.cache.CacheMode;
-import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -84,7 +79,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         return super.saveAsync(entity);
     }
 
-    @Override
     public ListenableFuture<Boolean> removeAsync(@NotNull Entry entity) {
 
         Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE).time();
@@ -108,17 +102,9 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      * @return CacheConfiguration instance
      */
     @NotNull
-    protected CacheConfiguration<Long, Entry> getCacheConfiguration() {
-        CacheConfiguration<Long, Entry> cacheCfg = new CacheConfiguration<>(getMapName(getEntityClass()));
-        cacheCfg.setBackups(1);
-        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
-        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
-        cacheCfg.setOffHeapMaxMemory(0);
-        cacheCfg.setReadThrough(false);
-        cacheCfg.setWriteThrough(false);
-        cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
-        return cacheCfg;
+    public CacheConfiguration<Long, Entry> getCacheConfiguration() {
+        return CacheUtils.getDefaultCacheConfiguration(getEntityClass());
+
     }
 
     @NotNull
@@ -128,7 +114,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     @NotNull
     private String getMapName(Class<Entry> clazz) {
-        return StringUtils.lowerCase(clazz.getName());
+        return CacheUtils.getCacheName(clazz);
     }
 
     protected enum MetricsType implements MetricsFactory.Type {

@@ -1,69 +1,80 @@
 package com.fnklabs.draenei.orm.analytics;
 
+import com.fnklabs.draenei.Metrics;
+import com.fnklabs.draenei.orm.CassandraClientFactory;
 import com.fnklabs.draenei.orm.DataProvider;
-import com.hazelcast.config.*;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.HazelcastInstanceAware;
-import com.hazelcast.core.IMap;
+import org.apache.ignite.Ignite;
+import org.apache.ignite.IgniteCache;
+import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.resources.IgniteInstanceResource;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
 import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 /**
  * Load data from DataProvider
  */
-class LoadDataTask<T> implements Callable<Integer>, Serializable, AnalyticsInstanceAware, HazelcastInstanceAware {
+class LoadDataTask<T extends Serializable> implements Callable<Integer>, Serializable {
     private final long startToken;
     private final long endToken;
-    private final String mapName;
     private final Class<T> entityClass;
+    private final CassandraClientFactory cassandraClientFactory;
+    private final CacheConfiguration<Long, T> cacheConfiguration;
 
-    private transient Analytics analytics;
-    private transient HazelcastInstance hazelcastInstance;
+    @IgniteInstanceResource
+    private transient Ignite ignite;
 
-    public LoadDataTask(long startToken, long endToken, String mapName, Class<T> entityClass) {
+    public LoadDataTask(long startToken,
+                        long endToken,
+                        Class<T> entityClass,
+                        CassandraClientFactory cassandraClientFactory,
+                        CacheConfiguration<Long, T> cacheConfiguration) {
         this.startToken = startToken;
         this.endToken = endToken;
-        this.mapName = mapName;
         this.entityClass = entityClass;
+        this.cassandraClientFactory = cassandraClientFactory;
+        this.cacheConfiguration = cacheConfiguration;
     }
 
     @Override
     public Integer call() throws Exception {
-        DataProvider<T> dataProvider = analytics.getDataProvider(entityClass);
+        IgniteCache<Long, T> map = getCache();
 
-        IMap<Long, T> map = getMap();
+        DataProvider<T> dataProvider = DataProvider.getDataProvider(entityClass, cassandraClientFactory, new Metrics());
 
-        LoadIntoHazelcastConsumer<T> consumer = new LoadIntoHazelcastConsumer<>(map, dataProvider);
+        LoadIntoDataGridConsumer<T> consumer = new LoadIntoDataGridConsumer<>(map, dataProvider);
 
         return dataProvider.load(startToken, endToken, consumer);
     }
 
-    @Override
-    public void setAnalyticsInstance(@NotNull Analytics analytics) {
-        this.analytics = analytics;
+
+    private IgniteCache<Long, T> getCache() {
+        return ignite.<Long, T>getOrCreateCache(cacheConfiguration);
     }
 
-    @Override
-    public void setHazelcastInstance(HazelcastInstance hazelcastInstance) {
-        this.hazelcastInstance = hazelcastInstance;
+    /**
+     * Consumer that load data into hazelcast
+     *
+     * @param <T> Consumed data class type
+     */
+    protected static class LoadIntoDataGridConsumer<T> implements Consumer<T>, Serializable {
+        @NotNull
+        private transient final IgniteCache<Long, T> map;
+
+        @NotNull
+        private transient final DataProvider<T> dataProvider;
+
+        LoadIntoDataGridConsumer(@NotNull IgniteCache<Long, T> map, @NotNull DataProvider<T> dataProvider) {
+            this.map = map;
+            this.dataProvider = dataProvider;
+        }
+
+        @Override
+        public void accept(@NotNull T t) {
+            long key = dataProvider.buildCacheKey(t);
+            map.put(key, t);
+        }
     }
-
-    private IMap<Long, T> getMap() {
-        Config config = hazelcastInstance.getConfig();
-
-        MapConfig mapConfig = config.getMapConfig(mapName);
-        mapConfig.setEvictionPolicy(EvictionPolicy.NONE);
-        mapConfig.setInMemoryFormat(InMemoryFormat.OBJECT);
-        mapConfig.setMaxIdleSeconds(0);
-        mapConfig.setMaxSizeConfig(new MaxSizeConfig());
-        mapConfig.setMaxIdleSeconds(0);
-        mapConfig.setTimeToLiveSeconds(0);
-
-        config.addMapConfig(mapConfig);
-
-        return hazelcastInstance.<Long, T>getMap(mapName);
-    }
-
 }

@@ -1,5 +1,6 @@
 package com.fnklabs.draenei;
 
+import com.codahale.metrics.Timer;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCompute;
@@ -37,6 +38,39 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 public class IgniteTest implements Serializable {
+    @NotNull
+    public static IgniteConfiguration getIgniteConfiguration() throws UnknownHostException {
+        HashMap<String, Object> userProperties = new HashMap<>();
+        userProperties.put("ROLE", "worker");
+
+        IgniteConfiguration cfg = new IgniteConfiguration();
+        cfg.setGridName(InetAddress.getLocalHost().getHostName() + " - " + UUID.randomUUID().toString());
+        cfg.setClientMode(false);
+        cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
+        cfg.setUserAttributes(userProperties);
+        cfg.setMarshaller(new OptimizedMarshaller());
+
+        cfg.setPublicThreadPoolSize(8);
+        cfg.setManagementThreadPoolSize(8);
+        cfg.setSystemThreadPoolSize(8);
+
+        TcpCommunicationSpi commSpi = new TcpCommunicationSpi();
+        commSpi.setSlowClientQueueLimit(1000);
+
+        cfg.setCommunicationSpi(commSpi);
+
+        TcpDiscoverySpi discoSpi = new TcpDiscoverySpi();
+        discoSpi.setClientReconnectDisabled(false);
+        discoSpi.setForceServerMode(false);
+
+        TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryMulticastIpFinder();
+
+        discoSpi.setIpFinder(ipFinder);
+        cfg.setDiscoverySpi(discoSpi);
+
+        return cfg;
+    }
+
     @Test
     public void testExecution() throws Exception {
         LoggerFactory.getLogger(getClass()).debug("Is client: {}", Ignition.isClientMode());
@@ -65,13 +99,16 @@ public class IgniteTest implements Serializable {
         IgniteCache<String, Long> firstCache = firstIgnite.getOrCreateCache(getCacheConfiguration());
         IgniteCache<String, Long> secondCache = secondIgnite.getOrCreateCache(getCacheConfiguration());
 
+        for (int i = 0; i < 1000; i++) {
+            Timer.Context time = Metrics.getTimer("cache.put").time();
+            firstCache.put("aa", 1L);
+            time.stop();
 
-        firstCache.put("aa", 1L);
-
-        secondCache.put("a", 1L);
-        firstCache.put("a", 2L);
-        secondCache.put("b", 2L);
-        secondCache.put("c", 4L);
+            secondCache.put("a", 1L);
+            firstCache.put("a", 2L);
+            secondCache.put("b", 2L);
+            secondCache.put("c", 4L);
+        }
 
         Assert.assertEquals(2, secondCache.get("b").longValue());
         Assert.assertEquals(2, secondCache.get("a").longValue());
@@ -91,6 +128,8 @@ public class IgniteTest implements Serializable {
                 LoggerFactory.getLogger(getClass()).debug("Result {}:{}", stringLongEntry.getKey(), stringLongEntry.getValue());
             }
         });
+
+        Metrics.report();
 
     }
 
@@ -143,35 +182,6 @@ public class IgniteTest implements Serializable {
         cacheCfg.addCacheEntryListenerConfiguration(new TestCacheEntryListenerConfiguration());
 
         return cacheCfg;
-    }
-
-    @NotNull
-    private IgniteConfiguration getIgniteConfiguration() throws UnknownHostException {
-        HashMap<String, Object> userProperties = new HashMap<>();
-        userProperties.put("ROLE", "worker");
-
-        IgniteConfiguration cfg = new IgniteConfiguration();
-        cfg.setGridName(InetAddress.getLocalHost().getHostName() + " - " + UUID.randomUUID().toString());
-        cfg.setClientMode(false);
-        cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
-        cfg.setUserAttributes(userProperties);
-        cfg.setMarshaller(new OptimizedMarshaller());
-
-        TcpCommunicationSpi commSpi = new TcpCommunicationSpi();
-        commSpi.setSlowClientQueueLimit(1000);
-
-        cfg.setCommunicationSpi(commSpi);
-
-        TcpDiscoverySpi discoSpi = new TcpDiscoverySpi();
-        discoSpi.setClientReconnectDisabled(false);
-        discoSpi.setForceServerMode(false);
-
-        TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryMulticastIpFinder();
-
-        discoSpi.setIpFinder(ipFinder);
-        cfg.setDiscoverySpi(discoSpi);
-
-        return cfg;
     }
 
     private static class TestCacheEntryListenerConfiguration implements CacheEntryListenerConfiguration<String, Long> {

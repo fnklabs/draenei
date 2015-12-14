@@ -195,7 +195,7 @@ class EntityMetadata {
                         entityMetadata.addColumnMetadata(columnMetadata);
                     }
 
-                    LOGGER.warn("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
+                    LOGGER.debug("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
                 } catch (NoSuchFieldException e) {
 //                    LOGGER.warn("Cant build column metadata", e);
                 }
