@@ -29,8 +29,10 @@ public class AnalyticsUtils {
      * <p>
      * Will generate token range and execute tasks to load data from cassandra by token range
      *
-     * @param dataProvider DataProvider from which will be loaded data
-     * @param <ValueIn>    Entity class type
+     * @param analyticsContext   Analytics context instance for retrieving distributed executor service and cassandra factory
+     * @param dataProvider       DataProvider from which will be loaded data
+     * @param cacheConfiguration CacheConfiguration in which will be loaded data
+     * @param <ValueIn>          Entity class type
      *
      * @return Future for operation complete with number of loaded elements
      */
