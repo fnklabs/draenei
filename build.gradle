@@ -6,7 +6,7 @@ apply plugin: 'signing'
 if (hasProperty("teamcity")) {
     project.ext.buildVersion = teamcity["build.number"]
 } else {
-    project.ext.buildVersion = '0.2.0.2'
+    project.ext.buildVersion = '0.3.1'
 }
 
 version = project.ext.buildVersion
@@ -54,9 +54,6 @@ dependencies {
     compile 'ch.qos.logback:logback-parent:1.1.2'
 
     compile 'com.google.guava:guava:18.0'
-
-    compile 'com.hazelcast:hazelcast:3.5.2'
-    compile 'com.hazelcast:hazelcast-client:3.5.2'
 
     compile 'org.apache.lucene.morphology:russian:1.0'
     compile 'org.apache.lucene.morphology:english:1.0'
