@@ -4,6 +4,7 @@ import com.datastax.driver.core.HostDistance;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.Metrics;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -52,7 +53,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, metricsFactory);
+        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
 
         ListenableFuture<TestEntity> oneAsync = cacheableDataProvider.findOneAsync(UUID.randomUUID());
 
@@ -81,7 +82,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, metricsFactory);
+        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
 
 
         TestEntity testEntity = new TestEntity();
@@ -104,7 +105,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, metricsFactory);
+        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
 
 
         TestEntity testEntity = new TestEntity();

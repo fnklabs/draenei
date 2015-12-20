@@ -20,7 +20,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Contains entity metadata information
+ * Contains entity metadata information builder from entity class
  */
 class EntityMetadata {
     private static final Logger LOGGER = LoggerFactory.getLogger(EntityMetadata.class);

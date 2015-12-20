@@ -13,13 +13,13 @@ public class LoadIntoDataGridConsumerTest {
         DataProvider dataProvider = mock(DataProvider.class);
         IgniteCache map = mock(IgniteCache.class);
 
-        when(dataProvider.buildCacheKey(anyLong())).thenReturn(1000L);
+        when(dataProvider.buildHashCode(anyLong())).thenReturn(1000L);
 
         LoadDataTask.LoadIntoDataGridConsumer<Long> loadIntoDataGridConsumer = new LoadDataTask.LoadIntoDataGridConsumer<>(map, dataProvider);
 
         loadIntoDataGridConsumer.accept(1L);
 
-        verify(dataProvider, times(1)).buildCacheKey(new Long(1L));
+        verify(dataProvider, times(1)).buildHashCode(new Long(1L));
         verify(map, times(1)).put(1000L, 1L);
     }
 }

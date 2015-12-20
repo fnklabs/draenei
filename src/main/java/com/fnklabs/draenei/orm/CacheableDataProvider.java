@@ -7,12 +7,14 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.cache.CacheEntryProcessor;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.concurrent.ExecutorService;
 
 public class CacheableDataProvider<Entry extends Serializable> extends DataProvider<Entry> {
 
@@ -23,8 +25,15 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public CacheableDataProvider(@NotNull Class<Entry> clazz,
                                  @NotNull CassandraClientFactory cassandraClient,
                                  @NotNull Ignite ignite,
+                                 @NotNull ExecutorService executorService,
                                  @NotNull MetricsFactory metricsFactory) {
 
+        super(clazz, cassandraClient, executorService, metricsFactory);
+
+        cache = ignite.getOrCreateCache(getCacheConfiguration());
+    }
+
+    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite, @NotNull MetricsFactory metricsFactory) {
         super(clazz, cassandraClient, metricsFactory);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
@@ -34,9 +43,9 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public ListenableFuture<Entry> findOneAsync(Object... keys) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND).time();
 
-        long cacheKey = buildCacheKey(keys);
+        long cacheKey = buildHashCode(keys);
 
-        Entry entry = cache.withAsync().get(cacheKey);
+        Entry entry = cache.get(cacheKey);
 
         if (entry != null) {
             getMetricsFactory().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS).inc();
@@ -66,34 +75,46 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         return findFuture;
     }
 
+    /**
+     * Execute on entry cache
+     *
+     * @param entry          Entry on which will be executed entry processor
+     * @param entryProcessor Entry processor that must be executed
+     * @param <ReturnValue>  ClassType
+     *
+     * @return Return value from entry processor
+     */
+    public <ReturnValue> ReturnValue execute(@NotNull Entry entry, @NotNull CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
+        return cache.invoke(buildHashCode(entry), entryProcessor);
+    }
+
     @Override
     public ListenableFuture<Boolean> saveAsync(@NotNull Entry entity) {
         Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE).time();
 
-        long cacheKey = buildCacheKey(entity);
+        long cacheKey = buildHashCode(entity);
 
-        cache.put(cacheKey, entity);
+        return Futures.transform(super.saveAsync(entity), (Boolean result) -> {
+            time.stop();
+            if (result) {
+                cache.put(cacheKey, entity);
+            }
 
-        time.stop();
-
-        return super.saveAsync(entity);
+            return result;
+        });
     }
 
     public ListenableFuture<Boolean> removeAsync(@NotNull Entry entity) {
 
         Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE).time();
 
-        long key = buildCacheKey(entity);
+        long key = buildHashCode(entity);
 
-        boolean remove = cache.remove(key);
+        return Futures.transform(super.removeAsync(entity), (Boolean result) -> {
+            timer.stop();
 
-        timer.stop();
-
-        if (!remove) {
-            return Futures.immediateFuture(false);
-        }
-
-        return super.removeAsync(entity);
+            return result && cache.remove(key);
+        });
     }
 
     /**
@@ -105,6 +126,10 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public CacheConfiguration<Long, Entry> getCacheConfiguration() {
         return CacheUtils.getDefaultCacheConfiguration(getEntityClass());
 
+    }
+
+    protected IgniteCache<Long, Entry> getCache() {
+        return cache;
     }
 
     @NotNull

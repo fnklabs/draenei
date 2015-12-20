@@ -8,13 +8,13 @@ import com.datastax.driver.core.querybuilder.Insert;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
 import com.fnklabs.draenei.CassandraClient;
+import com.fnklabs.draenei.ExecutorServiceFactory;
 import com.fnklabs.draenei.MetricsFactory;
 import com.fnklabs.draenei.orm.exception.CanNotBuildEntryCacheKey;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.fnklabs.draenei.orm.exception.QueryException;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
-import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.jetbrains.annotations.NotNull;
@@ -28,50 +28,107 @@ import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class DataProvider<V> {
     private static final Logger LOGGER = LoggerFactory.getLogger(DataProvider.class);
     /**
-     * hashing function to build Entity cache id
+     * hashing function to build Entity hash code
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
-    private static final Map<Class, DataProvider> dataProvidersRegistry = new ConcurrentHashMap<>();
+
+    /**
+     * Map for saving DataProviders by DataProvider class
+     */
+    private static final Map<Class, DataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
+
+    /**
+     * Entity class
+     */
     @NotNull
     private final Class<V> clazz;
+
+    /**
+     * Current entity metadata
+     */
     @NotNull
     private final EntityMetadata entityMetadata;
+
     @NotNull
     private final CassandraClientFactory cassandraClient;
+
     @NotNull
     private final MetricsFactory metricsFactory;
+
     @NotNull
     private final Function<Row, V> mapToObjectFunction;
 
-    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull MetricsFactory metricsFactory) {
+    @NotNull
+    private final ExecutorService executorService;
+
+    /**
+     * Construct provider
+     *
+     * @param clazz                  Entity class
+     * @param cassandraClientFactory CassandraClientFactory instance
+     * @param executorService        ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
+     * @param metricsFactory         MetricsFactory MetricsFactory instance
+     */
+    public DataProvider(@NotNull Class<V> clazz,
+                        @NotNull CassandraClientFactory cassandraClientFactory,
+                        @NotNull ExecutorService executorService,
+                        @NotNull MetricsFactory metricsFactory) {
         this.clazz = clazz;
-        this.cassandraClient = cassandraClient;
+        this.cassandraClient = cassandraClientFactory;
+        this.executorService = executorService;
         this.metricsFactory = metricsFactory;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
     }
 
-    public static <T> DataProvider<T> getDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull MetricsFactory metricsFactory) {
-        return dataProvidersRegistry.compute(clazz, new BiFunction<Class, DataProvider, DataProvider>() {
-            @Override
-            public DataProvider apply(Class aClass, DataProvider dataProvider) {
-                if (dataProvider == null) {
-                    return new DataProvider<T>(clazz, cassandraClientFactory, metricsFactory);
-                }
-                return dataProvider;
+    public DataProvider(@NotNull Class<V> clazz,
+                        @NotNull CassandraClientFactory cassandraClient,
+                        @NotNull MetricsFactory metricsFactory) {
+        this.clazz = clazz;
+        this.cassandraClient = cassandraClient;
+        this.metricsFactory = metricsFactory;
+        this.executorService = ExecutorServiceFactory.DEFAULT_EXECUTOR;
+        this.entityMetadata = build(clazz);
+        this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
+    }
+
+    /**
+     * Get DataProvider service
+     *
+     * @param clazz                  DataProvider class
+     * @param cassandraClientFactory CassandraClientFactory instance
+     * @param metricsFactory         MetricsFactory instance
+     * @param <T>                    DataProvider class type
+     *
+     * @return DataProvider instance
+     */
+    public static <T> DataProvider<T> getDataProvider(Class<T> clazz,
+                                                      @NotNull CassandraClientFactory cassandraClientFactory,
+                                                      @NotNull MetricsFactory metricsFactory) {
+        return DATA_PROVIDERS_REGISTRY.compute(clazz, (dataProviderClass, dataProvider) -> {
+            if (dataProvider == null) {
+                return new DataProvider<T>(clazz, cassandraClientFactory, metricsFactory);
             }
+            return dataProvider;
         });
     }
 
-    public long buildCacheKey(@NotNull V entity) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY).time();
+    /**
+     * Build hash code for entity
+     *
+     * @param entity Input entity
+     *
+     * @return Cache key
+     */
+    public final long buildHashCode(@NotNull V entity) {
+        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY).time();
 
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
@@ -88,11 +145,11 @@ public class DataProvider<V> {
             }
         }
 
-        long cacheKey = buildCacheKey(keys);
+        long hashCode = buildHashCode(keys);
 
-        time.stop();
+        timer.stop();
 
-        return cacheKey;
+        return hashCode;
     }
 
     /**
@@ -111,20 +168,18 @@ public class DataProvider<V> {
 
         columns.forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
 
-        String queryString = insert.getQueryString();
-
         ListenableFuture<Boolean> resultFuture;
 
         try {
-            PreparedStatement prepare = getCassandraClient().prepare(queryString);
+            PreparedStatement prepare = getCassandraClient().prepare(insert.getQueryString());
             prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
-            BoundStatement boundStatement = getBoundStatement(entity, columns, prepare);
+            BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
 
             ResultSetFuture input = getCassandraClient().executeAsync(boundStatement);
-            resultFuture = Futures.transform(input, ResultSet::wasApplied);
+            resultFuture = Futures.transform(input, ResultSet::wasApplied, getExecutorService());
         } catch (SyntaxError e) {
-            LOGGER.warn("Can't prepare query: " + queryString, e);
+            LOGGER.warn("Can't prepare query: " + insert.getQueryString(), e);
 
             resultFuture = Futures.immediateFailedFuture(e);
         }
@@ -191,7 +246,7 @@ public class DataProvider<V> {
 
         ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
 
-        ListenableFuture<Boolean> transform = Futures.transform(resultSetFuture, ResultSet::wasApplied);
+        ListenableFuture<Boolean> transform = Futures.transform(resultSetFuture, ResultSet::wasApplied, getExecutorService());
 
         monitorFuture(removeAsyncTimer, transform);
 
@@ -305,12 +360,12 @@ public class DataProvider<V> {
      *
      * @return Cache key
      */
-    protected final long buildCacheKey(Object... keys) {
+    protected final long buildHashCode(Object... keys) {
         ArrayList<Object> keyList = new ArrayList<>();
 
         Collections.addAll(keyList, keys);
 
-        return buildCacheKey(keyList);
+        return buildHashCode(keyList);
     }
 
     @NotNull
@@ -400,7 +455,7 @@ public class DataProvider<V> {
             }
 
             return true;
-        });
+        }, getExecutorService());
     }
 
     /**
@@ -421,7 +476,7 @@ public class DataProvider<V> {
     }
 
     @NotNull
-    final protected EntityMetadata getEntityMetadata() {
+    protected final EntityMetadata getEntityMetadata() {
         return entityMetadata;
     }
 
@@ -454,12 +509,17 @@ public class DataProvider<V> {
      * @return Listenable future
      */
     protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
-        Futures.addCallback(listenableFuture, new TimerFutureCallback<Input>(timer));
+        Futures.addCallback(listenableFuture, new FutureTimerCallback<Input>(timer));
 
         return Futures.transform(listenableFuture, new JdkFunctionWrapper<Input, Output>(userCallback));
     }
 
-    private long buildCacheKey(List<Object> keys) {
+    @NotNull
+    private ExecutorService getExecutorService() {
+        return executorService;
+    }
+
+    private long buildHashCode(List<Object> keys) {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ObjectOutputStream objectOutputStream = new ObjectOutputStream(out);
@@ -495,8 +555,17 @@ public class DataProvider<V> {
         }
     }
 
+    /**
+     * Create BoundStatement from PreparedStatement and bind parameter values from entity
+     *
+     * @param prepare PreparedStatement
+     * @param entity  Entity from which will be read data
+     * @param columns Bind columns
+     *
+     * @return BoundStatement
+     */
     @NotNull
-    private BoundStatement getBoundStatement(@NotNull V entity, @NotNull List<ColumnMetadata> columns, @NotNull PreparedStatement prepare) {
+    private BoundStatement createBoundStatement(@NotNull PreparedStatement prepare, @NotNull V entity, @NotNull List<ColumnMetadata> columns) {
         BoundStatement boundStatement = new BoundStatement(prepare);
         boundStatement.setConsistencyLevel(getEntityMetadata().getWriteConsistencyLevel());
 
@@ -529,82 +598,9 @@ public class DataProvider<V> {
         DATA_PROVIDER_FIND_ONE,
         DATA_PROVIDER_SAVE,
         DATA_PROVIDER_REMOVE,
-        DATA_PROVIDER_FIND, CACHEABLE_DATA_PROVIDER_CREATE_KEY, DATA_PROVIDER_CREATE_KEY,
+        DATA_PROVIDER_FIND,
+        DATA_PROVIDER_CREATE_KEY,
     }
 
-    /**
-     * Map data from {@link Row} to object
-     *
-     * @param <ReturnValue>
-     */
-    private static class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
-        private final Class<ReturnValue> clazz;
-        private final EntityMetadata entityMetadata;
 
-        private MapToObjectFunction(Class<ReturnValue> clazz, EntityMetadata entityMetadata) {
-            this.clazz = clazz;
-            this.entityMetadata = entityMetadata;
-        }
-
-        @Override
-        public ReturnValue apply(Row row) {
-            ReturnValue instance = null;
-
-            try {
-                instance = clazz.newInstance();
-
-                List<ColumnMetadata> columns = entityMetadata.getFieldMetaData();
-
-                for (ColumnMetadata column : columns) {
-                    if (row.getColumnDefinitions().contains(column.getName())) {
-
-                        Object deserializedValue = column.deserialize(row.getBytesUnsafe(column.getName()));
-
-                        column.writeValue(instance, deserializedValue);
-                    }
-                }
-
-            } catch (InstantiationException | IllegalAccessException e) {
-                LOGGER.warn("Cant retrieve entity instance", e);
-            }
-            return instance;
-        }
-    }
-
-    private static class JdkFunctionWrapper<Input, Output> implements com.google.common.base.Function<Input, Output> {
-        private final Function<Input, Output> jdkFunction;
-
-        private JdkFunctionWrapper(Function<Input, Output> jdkFunction) {
-            this.jdkFunction = jdkFunction;
-        }
-
-        @Override
-        public Output apply(Input input) {
-            return jdkFunction.apply(input);
-        }
-    }
-
-    /**
-     * Function for stoping timer on future completion
-     *
-     * @param <Input> Future type
-     */
-    private static class TimerFutureCallback<Input> implements FutureCallback<Input> {
-        private final Timer.Context timer;
-
-        private TimerFutureCallback(Timer.Context timer) {
-            this.timer = timer;
-        }
-
-        @Override
-        public void onSuccess(Input result) {
-            timer.stop();
-        }
-
-        @Override
-        public void onFailure(Throwable t) {
-            timer.stop();
-            LOGGER.warn("Cant complete operation", t);
-        }
-    }
 }

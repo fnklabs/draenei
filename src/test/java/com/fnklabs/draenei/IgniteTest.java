@@ -1,6 +1,5 @@
 package com.fnklabs.draenei;
 
-import com.codahale.metrics.Timer;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCompute;
@@ -14,7 +13,9 @@ import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.lang.IgniteBiPredicate;
+import org.apache.ignite.events.Event;
+import org.apache.ignite.events.EventType;
+import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.logger.slf4j.Slf4jLogger;
 import org.apache.ignite.marshaller.optimized.OptimizedMarshaller;
 import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
@@ -31,20 +32,22 @@ import javax.cache.configuration.CacheEntryListenerConfiguration;
 import javax.cache.configuration.Factory;
 import javax.cache.event.*;
 import java.io.Serializable;
-import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
-import java.util.UUID;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class IgniteTest implements Serializable {
+    private static AtomicInteger igniteNumer = new AtomicInteger(1);
+
     @NotNull
     public static IgniteConfiguration getIgniteConfiguration() throws UnknownHostException {
         HashMap<String, Object> userProperties = new HashMap<>();
         userProperties.put("ROLE", "worker");
 
         IgniteConfiguration cfg = new IgniteConfiguration();
-        cfg.setGridName(InetAddress.getLocalHost().getHostName() + " - " + UUID.randomUUID().toString());
+        cfg.setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE);
+
+        cfg.setGridName("IgniteNode[" + igniteNumer.getAndIncrement() + "]");
         cfg.setClientMode(false);
         cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
         cfg.setUserAttributes(userProperties);
@@ -95,19 +98,52 @@ public class IgniteTest implements Serializable {
         Ignite firstIgnite = Ignition.start(getIgniteConfiguration());
         Ignite secondIgnite = Ignition.start(getIgniteConfiguration());
 
+        firstIgnite.events()
+                   .localListen(new IgnitePredicate<Event>() {
+                                    @Override
+                                    public boolean apply(Event event) {
+                                        LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
+                                        return true;
+                                    }
+                                },
+                           EventType.EVT_CACHE_ENTRY_CREATED,
+                           EventType.EVT_CACHE_ENTRY_DESTROYED,
+                           EventType.EVT_CACHE_ENTRY_EVICTED,
+                           EventType.EVT_CACHE_OBJECT_PUT,
+                           EventType.EVT_CACHE_OBJECT_REMOVED,
+                           EventType.EVT_CACHE_OBJECT_EXPIRED
+                   );
+        secondIgnite.events()
+                    .localListen(new IgnitePredicate<Event>() {
+                                     @Override
+                                     public boolean apply(Event event) {
+                                         LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
+                                         return true;
+                                     }
+                                 },
+                            EventType.EVT_CACHE_ENTRY_CREATED,
+                            EventType.EVT_CACHE_ENTRY_DESTROYED,
+                            EventType.EVT_CACHE_ENTRY_EVICTED,
+                            EventType.EVT_CACHE_OBJECT_PUT,
+                            EventType.EVT_CACHE_OBJECT_REMOVED,
+                            EventType.EVT_CACHE_OBJECT_EXPIRED
+                    );
 
         IgniteCache<String, Long> firstCache = firstIgnite.getOrCreateCache(getCacheConfiguration());
         IgniteCache<String, Long> secondCache = secondIgnite.getOrCreateCache(getCacheConfiguration());
 
-        for (int i = 0; i < 1000; i++) {
-            Timer.Context time = Metrics.getTimer("cache.put").time();
+        for (int i = 0; i < 1; i++) {
             firstCache.put("aa", 1L);
-            time.stop();
 
             secondCache.put("a", 1L);
             firstCache.put("a", 2L);
             secondCache.put("b", 2L);
             secondCache.put("c", 4L);
+            secondCache.put("ddddd", 4L);
+            secondCache.put("text", 4L);
+
+            firstCache.put("1234", 0l);
+            firstCache.put("!1234", 0l);
         }
 
         Assert.assertEquals(2, secondCache.get("b").longValue());
@@ -115,19 +151,19 @@ public class IgniteTest implements Serializable {
         Assert.assertNull(secondCache.get("k"));
 
 
-        QueryCursor<Cache.Entry<String, Long>> query = secondCache.query(new ScanQuery<String, Long>(new IgniteBiPredicate<String, Long>() {
-            @Override
-            public boolean apply(String s, Long aLong) {
-                return true;
-            }
-        }));
-
-        query.forEach(new Consumer<Cache.Entry<String, Long>>() {
-            @Override
-            public void accept(Cache.Entry<String, Long> stringLongEntry) {
-                LoggerFactory.getLogger(getClass()).debug("Result {}:{}", stringLongEntry.getKey(), stringLongEntry.getValue());
-            }
-        });
+//        QueryCursor<Cache.Entry<String, Long>> query = secondCache.query(new ScanQuery<String, Long>(new IgniteBiPredicate<String, Long>() {
+//            @Override
+//            public boolean apply(String s, Long aLong) {
+//                return true;
+//            }
+//        }));
+//
+//        query.forEach(new Consumer<Cache.Entry<String, Long>>() {
+//            @Override
+//            public void accept(Cache.Entry<String, Long> stringLongEntry) {
+//                LoggerFactory.getLogger(getClass()).debug("Result {}:{}", stringLongEntry.getKey(), stringLongEntry.getValue());
+//            }
+//        });
 
         Metrics.report();
 
@@ -173,9 +209,9 @@ public class IgniteTest implements Serializable {
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setOffHeapMaxMemory(0);
-        cacheCfg.setCacheStoreFactory(new CacheStoreFactory());
-        cacheCfg.setReadThrough(true);
-        cacheCfg.setWriteThrough(true);
+//        cacheCfg.setCacheStoreFactory(new CacheStoreFactory());
+//        cacheCfg.setReadThrough(true);
+//        cacheCfg.setWriteThrough(true);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(1));
 

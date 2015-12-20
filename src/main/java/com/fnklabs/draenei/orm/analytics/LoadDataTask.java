@@ -73,7 +73,7 @@ class LoadDataTask<T extends Serializable> implements Callable<Integer>, Seriali
 
         @Override
         public void accept(@NotNull T t) {
-            long key = dataProvider.buildCacheKey(t);
+            long key = dataProvider.buildHashCode(t);
             map.put(key, t);
         }
     }

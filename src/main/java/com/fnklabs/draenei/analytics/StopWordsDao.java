@@ -10,6 +10,6 @@ public abstract class StopWordsDao extends CacheableDataProvider<StopWord> {
                         MetricsFactory metricsFactory,
                         ListeningExecutorService executorService) {
         // todo change it
-        super(StopWord.class, null, null, metricsFactory);
+        super(StopWord.class, null, null,null, metricsFactory);
     }
 }
