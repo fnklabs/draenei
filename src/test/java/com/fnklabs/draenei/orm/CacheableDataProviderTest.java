@@ -4,7 +4,6 @@ import com.datastax.driver.core.HostDistance;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.Metrics;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -53,7 +52,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
+        }, ignite, metricsFactory);
 
         ListenableFuture<TestEntity> oneAsync = cacheableDataProvider.findOneAsync(UUID.randomUUID());
 
@@ -82,7 +81,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
+        }, ignite, metricsFactory);
 
 
         TestEntity testEntity = new TestEntity();
@@ -96,6 +95,8 @@ public class CacheableDataProviderTest {
 
         Assert.assertNotNull(testEntity);
         Assert.assertEquals(testEntity, testEntity2);
+
+        Thread.sleep(1000);
     }
 
     @Test
@@ -105,7 +106,7 @@ public class CacheableDataProviderTest {
             public CassandraClient create() {
                 return cassandraClient;
             }
-        }, ignite, MoreExecutors.newDirectExecutorService(), metricsFactory);
+        }, ignite, metricsFactory);
 
 
         TestEntity testEntity = new TestEntity();
@@ -137,6 +138,7 @@ public class CacheableDataProviderTest {
     @NotNull
     private IgniteConfiguration getIgniteConfiguration() throws UnknownHostException {
         IgniteConfiguration cfg = new IgniteConfiguration();
+        cfg.setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE);
         cfg.setGridName(InetAddress.getLocalHost().getHostName() + " - 1");
         cfg.setClientMode(false);
         cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));

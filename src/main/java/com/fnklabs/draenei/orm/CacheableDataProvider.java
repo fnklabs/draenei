@@ -26,10 +26,10 @@ import java.util.concurrent.ExecutorService;
  * <p>
  * Current implementation doesn't guarantee full data consistency because it write data into persistent storage asynchronously in background and old record can rewrite new record
  * in  storage.
+ * <p>
+ * Ignite must be configured to process cache eventType: {@code org.apache.ignite.configuration.IgniteConfiguration#setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE)}
  *
  * @param <Entry> Entry class type
- *
- * @apiNote Ignite must be configured to process cache eventType: {@code org.apache.ignite.configuration.IgniteConfiguration#setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE)}
  */
 public class CacheableDataProvider<Entry extends Serializable> extends DataProvider<Entry> {
 

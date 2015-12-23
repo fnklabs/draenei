@@ -15,7 +15,7 @@ public class ExecutorServiceFactory {
             MAX_POOL_SIZE,
             0L,
             TimeUnit.SECONDS,
-            new ArrayBlockingQueue<Runnable>(Integer.MAX_VALUE),
+            new ArrayBlockingQueue<Runnable>(Short.MAX_VALUE),
             new ThreadFactory("draenei-executor-"),
             new ThreadPoolExecutor.CallerRunsPolicy()
     );
