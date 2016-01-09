@@ -182,6 +182,7 @@ public class SearchServiceImpl implements Service, SearchService {
         return getClusteringAlgorithm().build(document.getDocument());
     }
 
+    @NotNull
     @Override
     public Set<Facet> buildFacets(@NotNull String text) {
         return getClusteringAlgorithm().build(text);

@@ -13,7 +13,7 @@ import java.io.ObjectOutput;
  * <p>
  * Facet can be any document property by which can be calculated similarity
  */
-class Facet implements Externalizable {
+public class Facet implements Externalizable {
 
     private FacetKey key;
 
