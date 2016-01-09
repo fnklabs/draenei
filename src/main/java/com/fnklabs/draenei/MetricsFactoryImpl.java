@@ -5,14 +5,14 @@ import com.codahale.metrics.*;
 import java.util.concurrent.TimeUnit;
 
 
-public class Metrics implements MetricsFactory {
+public class MetricsFactoryImpl implements MetricsFactory {
     private static final MetricRegistry METRIC_REGISTRY = new MetricRegistry();
 
-    private static final Slf4jReporter REPORTER = Slf4jReporter
-            .forRegistry(METRIC_REGISTRY)
-            .convertRatesTo(TimeUnit.MILLISECONDS)
-            .convertDurationsTo(TimeUnit.MILLISECONDS)
-            .build();
+    private static final Slf4jReporter REPORTER = Slf4jReporter.forRegistry(METRIC_REGISTRY)
+                                                               .convertRatesTo(TimeUnit.SECONDS)
+                                                               .convertDurationsTo(TimeUnit.MILLISECONDS)
+                                                               .build();
+    private static MetricsFactory METRICS_FACTORY = new MetricsFactoryImpl();
 
     public static void report() {
         REPORTER.report();
@@ -20,6 +20,10 @@ public class Metrics implements MetricsFactory {
 
     public static Timer getTimer(String type) {
         return METRIC_REGISTRY.timer(type);
+    }
+
+    public static MetricsFactory getInstance() {
+        return METRICS_FACTORY;
     }
 
     @Override

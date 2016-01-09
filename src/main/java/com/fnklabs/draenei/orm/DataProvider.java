@@ -127,7 +127,7 @@ public class DataProvider<V> {
      *
      * @return Cache key
      */
-    public final long buildHashCode(@NotNull V entity) {
+    public long buildHashCode(@NotNull V entity) {
         Timer.Context timer = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY).time();
 
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();

@@ -1,6 +1,6 @@
 package com.fnklabs.draenei.orm.analytics;
 
-import com.fnklabs.draenei.Metrics;
+import com.fnklabs.draenei.MetricsFactoryImpl;
 import com.fnklabs.draenei.orm.CassandraClientFactory;
 import com.fnklabs.draenei.orm.DataProvider;
 import org.apache.ignite.Ignite;
@@ -42,7 +42,7 @@ class LoadDataTask<T extends Serializable> implements Callable<Integer>, Seriali
     public Integer call() throws Exception {
         IgniteCache<Long, T> map = getCache();
 
-        DataProvider<T> dataProvider = DataProvider.getDataProvider(entityClass, cassandraClientFactory, new Metrics());
+        DataProvider<T> dataProvider = DataProvider.getDataProvider(entityClass, cassandraClientFactory, new MetricsFactoryImpl());
 
         LoadIntoDataGridConsumer<T> consumer = new LoadIntoDataGridConsumer<>(map, dataProvider);
 

@@ -1,4 +1,4 @@
-package com.fnklabs.draenei.analytics;
+package com.fnklabs.draenei.analytics.search;
 
 
 import org.jetbrains.annotations.NotNull;

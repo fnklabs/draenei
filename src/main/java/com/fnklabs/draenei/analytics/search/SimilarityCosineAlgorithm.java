@@ -1,4 +1,4 @@
-package com.fnklabs.draenei.analytics;
+package com.fnklabs.draenei.analytics.search;
 
 import com.codahale.metrics.Timer;
 import com.fnklabs.draenei.MetricsFactory;
@@ -8,11 +8,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-final class CosineSimilarityAlgorithm implements SimilarityAlgorithm {
+final class SimilarityCosineAlgorithm implements SimilarityAlgorithm {
 
     private final MetricsFactory metricsFactory;
 
-    CosineSimilarityAlgorithm(MetricsFactory metricsFactory) {
+    SimilarityCosineAlgorithm(MetricsFactory metricsFactory) {
         this.metricsFactory = metricsFactory;
     }
 
@@ -54,7 +54,7 @@ final class CosineSimilarityAlgorithm implements SimilarityAlgorithm {
     protected <T extends Facet, K extends Facet> double getScalarComposition(@NotNull Collection<T> firstVector, @NotNull Collection<K> secondVector) {
         Timer.Context time = metricsFactory.getTimer(MetricsType.COSINE_SIMILARITY_GET_SCALAR_COMPOSITION).time();
 
-        Map<Facet.Key, K> secondMap = transformToMap(secondVector);
+        Map<FacetKey, K> secondMap = transformToMap(secondVector);
 
         double sum = 0;
 
@@ -72,10 +72,10 @@ final class CosineSimilarityAlgorithm implements SimilarityAlgorithm {
         return sum;
     }
 
-    private <T extends Facet> Map<Facet.Key, T> transformToMap(@NotNull Collection<T> vector) {
+    private <T extends Facet> Map<FacetKey, T> transformToMap(@NotNull Collection<T> vector) {
         Timer.Context time = metricsFactory.getTimer(MetricsType.COSINE_SIMILARITY_TRANSFORM_MAP).time();
 
-        Map<Facet.Key, T> map = new HashMap<>();
+        Map<FacetKey, T> map = new HashMap<>();
 
         for (T item : vector) {
             map.putIfAbsent(item.getKey(), item);

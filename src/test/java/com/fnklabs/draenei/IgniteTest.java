@@ -1,5 +1,6 @@
 package com.fnklabs.draenei;
 
+import com.google.common.base.MoreObjects;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCompute;
@@ -11,6 +12,7 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cache.query.ContinuousQuery;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
+import org.apache.ignite.cache.query.annotations.QueryTextField;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.Event;
@@ -34,6 +36,8 @@ import javax.cache.event.*;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class IgniteTest implements Serializable {
@@ -51,11 +55,12 @@ public class IgniteTest implements Serializable {
         cfg.setClientMode(false);
         cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
         cfg.setUserAttributes(userProperties);
-        cfg.setMarshaller(new OptimizedMarshaller());
+        cfg.setMarshaller(new OptimizedMarshaller(false));
 
-        cfg.setPublicThreadPoolSize(8);
-        cfg.setManagementThreadPoolSize(8);
-        cfg.setSystemThreadPoolSize(8);
+
+//        cfg.setPublicThreadPoolSize(8);
+//        cfg.setManagementThreadPoolSize(8);
+//        cfg.setSystemThreadPoolSize(8);
 
         TcpCommunicationSpi commSpi = new TcpCommunicationSpi();
         commSpi.setSlowClientQueueLimit(1000);
@@ -165,7 +170,7 @@ public class IgniteTest implements Serializable {
 //            }
 //        });
 
-        Metrics.report();
+        MetricsFactoryImpl.report();
 
     }
 
@@ -202,6 +207,50 @@ public class IgniteTest implements Serializable {
 
     }
 
+//    @Test
+//    public void testTextSearch() throws Exception {
+//        CacheConfiguration<UUID, TestObject> cacheCfg = new CacheConfiguration<>("test");
+//        cacheCfg.setBackups(1);
+//        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+//        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+//        cacheCfg.setOffHeapMaxMemory(0);
+//        cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
+//        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(1));
+//        cacheCfg.setIndexedTypes(String.class, Strings.class);
+//
+////        Collection<CacheTypeMetadata> types = new ArrayList<>();
+//
+////        CacheTypeMetadata type = new CacheTypeMetadata();
+////        type.setValueType(TestObject.class.getName());
+////        Map<String, Class<?>> qryFlds = type.getQueryFields();
+////        qryFlds.put("id", UUID.class);
+////        qryFlds.put("title", String.class);
+//////        qryFlds.put("genre", Set.class);
+////
+////        Collection<String> txtFlds = type.getTextFields();
+////        txtFlds.add("title");
+//////        txtFlds.add("genre");
+////
+////        types.add(type);
+////
+////        cacheCfg.setTypeMetadata(types);
+//
+//        Ignite ignite = Ignition.start(getIgniteConfiguration());
+//        IgniteCache<UUID, TestObject> cache = ignite.<UUID, TestObject>getOrCreateCache(cacheCfg);
+//
+//        cache.put(UUID.randomUUID(), new TestObject("Тестовый текст тестовый ааа", Sets.newHashSet("комедия", "детектив")));
+//        cache.put(UUID.randomUUID(), new TestObject("Тестовый текст текст", Sets.newHashSet("детектив", "фантастика")));
+//        cache.put(UUID.randomUUID(), new TestObject("Тестовый текст текст", Sets.newHashSet("детектив", "фантастика")));
+//        cache.put(UUID.randomUUID(), new TestObject("текст текст текст", Sets.newHashSet("детектив", "фантастика")));
+//
+//        QueryCursor<Cache.Entry<UUID, TestObject>> queryResult = cache.query(new TextQuery<UUID, TestObject>(TestObject.class, "тест"));
+//
+//        queryResult.getAll().forEach(item -> {
+//            LoggerFactory.getLogger(getClass()).debug("Result: {}", item.getValue());
+//        });
+//
+//    }
+
     @NotNull
     private CacheConfiguration<String, Long> getCacheConfiguration() {
         CacheConfiguration<String, Long> cacheCfg = new CacheConfiguration<>("test");
@@ -215,9 +264,69 @@ public class IgniteTest implements Serializable {
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(1));
 
+
         cacheCfg.addCacheEntryListenerConfiguration(new TestCacheEntryListenerConfiguration());
 
         return cacheCfg;
+    }
+
+    static class TestObject extends TestClass implements Serializable {
+        private UUID id = UUID.randomUUID();
+
+        @QueryTextField
+        private String title;
+
+        @QueryTextField
+        private Set<String> genre;
+
+        public TestObject(String title, Set<String> genre) {
+            this.title = title;
+            this.genre = genre;
+        }
+
+        public UUID getId() {
+            return id;
+        }
+
+        public void setId(UUID id) {
+            this.id = id;
+        }
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public Set<String> getGenre() {
+            return genre;
+        }
+
+        public void setGenre(Set<String> genre) {
+            this.genre = genre;
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                              .add("title", getTitle())
+                              .add("genre", getGenre())
+                              .toString();
+        }
+    }
+
+    private static class TestClass {
+        private UUID id;
+
+        public UUID getId() {
+            return id;
+        }
+
+        public void setId(UUID id) {
+            this.id = id;
+        }
     }
 
     private static class TestCacheEntryListenerConfiguration implements CacheEntryListenerConfiguration<String, Long> {

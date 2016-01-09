@@ -1,4 +1,4 @@
-package com.fnklabs.draenei.analytics;
+package com.fnklabs.draenei.analytics.search;
 
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.LoggerFactory;
@@ -34,7 +34,7 @@ final class SimilarityAlgorithmFactory {
     public SimilarityAlgorithm get(@NotNull String algorithm) {
         if (!getAlgorithms().containsKey(algorithm)) {
             LoggerFactory.getLogger(SimilarityAlgorithmFactory.class).warn("Requested unknown algorithm: {} available algorithms: {}", algorithm, getAlgorithms().keySet());
-            throw new UnknownAlgorithm(algorithm);
+            throw new UnknownAlgorithmException(algorithm);
         }
 
         return getAlgorithms().get(algorithm);
