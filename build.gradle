@@ -31,9 +31,6 @@ buildscript {
     }
 }
 
-
-
-
 configurations {
     compile.exclude module: 'slf4j-log4j12'
     compile.exclude module: 'hibernate-validator'
@@ -47,8 +44,6 @@ dependencies {
 
     compile 'com.intellij:annotations:12.0'
 
-    compile 'org.apache.commons:commons-math:2.2'
-    compile 'org.apache.commons:commons-lang3:3.3.2'
 
     compile 'com.datastax.cassandra:cassandra-driver-core:2.1.9'
 
@@ -58,6 +53,11 @@ dependencies {
 
     compile 'com.google.guava:guava:18.0'
 
+    compile 'commons-beanutils:commons-beanutils:1.9.2'
+
+    compile 'org.apache.commons:commons-math:2.2'
+    compile 'org.apache.commons:commons-lang3:3.3.2'
+
     compile 'org.apache.lucene.morphology:russian:1.1'
     compile 'org.apache.lucene.morphology:english:1.1'
 
@@ -65,7 +65,9 @@ dependencies {
     compile 'org.apache.ignite:ignite-slf4j:1.4.0'
     compile 'org.apache.ignite:ignite-indexing:1.4.0'
 
-
+    compile 'io.dropwizard.metrics:metrics-core:3.1.2',
+            'io.dropwizard.metrics:metrics-jvm:3.1.2',
+            'io.dropwizard.metrics:metrics-healthchecks:3.1.2'
 }
 
 jar {

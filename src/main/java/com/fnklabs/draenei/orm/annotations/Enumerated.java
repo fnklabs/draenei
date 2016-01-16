@@ -5,13 +5,18 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+
+/**
+ * If field type is enumerated or {@code Collection<Enum>}
+ */
 @Target(value = {ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Column {
+public @interface Enumerated {
+
     /**
-     * Column name
+     * Enum class type
      *
-     * @return If null than field name will be as column name
+     * @return
      */
-    String name() default "";
+    Class<?> enumType();
 }

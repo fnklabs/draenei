@@ -1,80 +1,77 @@
 package com.fnklabs.draenei.analytics.search;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.base.Objects;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
+import java.io.Serializable;
 
-/**
- * Facet interface that used by {@link ClusteringAlgorithm} to build facets from content
- * <p>
- * Facet can be any document property by which can be calculated similarity
- */
-public class Facet implements Externalizable {
+public class Facet implements Serializable {
 
-    private FacetKey key;
+    @NotNull
+    private final FacetType facetType;
 
-    private double rank;
-
-    private long document;
-
-    public Facet() {
-    }
+    @NotNull
+    private final Serializable value;
 
     /**
-     * @param key
-     * @param rank
-     * @param document
+     * @param facetType Facet type (axis)
+     * @param value     Facet value
      */
-    public Facet(@NotNull FacetKey key, double rank, long document) {
-        this.key = key;
-        this.rank = rank;
-        this.document = document;
-    }
-
-    public long getDocument() {
-        return document;
+    public Facet(@NotNull FacetType facetType, @NotNull Serializable value) {
+        this.facetType = facetType;
+        this.value = value;
     }
 
     /**
-     * Return facet value.
-     * <p>
-     * Higher value means higher weight
+     * Check whether specified facets are equals
      *
-     * @return clustering value
+     * @param left  Facet
+     * @param right Facet
+     *
+     * @return
      */
-    public double getRank() {
-        return rank;
+    @Deprecated
+    public static boolean same(@NotNull Facet left, @NotNull Facet right) {
+        if (left.getFacetType().getName().equals(FacetType.UNKNOWN) || right.getFacetType().getName().equals(FacetType.UNKNOWN)) {
+            return left.getValue().equals(right.getValue());
+        }
+
+        return left.equals(right);
     }
 
     @NotNull
-    public FacetKey getKey() {
-        return key;
+    public FacetType getFacetType() {
+        return facetType;
+    }
+
+    @NotNull
+    public Serializable getValue() {
+        return value;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(getFacetType(), getValue());
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof Facet) {
+            Facet facet = (Facet) obj;
+
+
+            return Objects.equal(getFacetType(), facet.getFacetType()) && Objects.equal(getValue(), facet.getValue());
+        }
+
+        return false;
     }
 
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                          .add("key", getKey())
-                          .add("rank", getRank())
+                          .add("facetType", getFacetType())
+                          .add("value", getValue())
                           .toString();
-    }
-
-
-    @Override
-    public void writeExternal(ObjectOutput out) throws IOException {
-        out.writeObject(getKey());
-        out.writeDouble(getRank());
-        out.writeLong(getDocument());
-    }
-
-    @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        key = (FacetKey) in.readObject();
-        rank = in.readDouble();
-        document = in.readLong();
     }
 }

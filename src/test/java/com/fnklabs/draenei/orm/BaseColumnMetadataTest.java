@@ -10,7 +10,7 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.util.UUID;
 
-public class ColumnMetadataTest {
+public class BaseColumnMetadataTest {
 
     @Test
     public void testBuildColumnMetadata() throws Exception {
@@ -19,15 +19,13 @@ public class ColumnMetadataTest {
         PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
 
         for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
-            try {
-
-                ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
-
-                Assert.assertEquals("id", columnMetadata.getName());
-            } catch (NoSuchFieldException e) {
-
+            if (propertyDescriptor.getName().equals("class")) {
+                continue;
             }
 
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+
+            Assert.assertEquals("id", columnMetadata.getName());
         }
     }
 
@@ -42,7 +40,7 @@ public class ColumnMetadataTest {
                 continue;
             }
 
-            ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
 
             Assert.assertNotNull(columnMetadata);
 
@@ -70,7 +68,7 @@ public class ColumnMetadataTest {
                 continue;
             }
 
-            ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
 
             Assert.assertNotNull(columnMetadata);
 

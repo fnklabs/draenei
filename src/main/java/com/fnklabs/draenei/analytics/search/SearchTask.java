@@ -11,25 +11,27 @@ import org.apache.ignite.resources.IgniteInstanceResource;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.Serializable;
+import java.util.*;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-class SearchTask extends ComputeTaskAdapter<Object, List<SearchResult>> {
+public class SearchTask<T extends Predicate<DocumentIndex> & Serializable> extends ComputeTaskAdapter<Object, List<SearchResult>> {
     /**
      *
      */
     @NotNull
-    private final Set<Facet> searchFacets;
+    private final Collection<FacetRank> searchFacetRanks;
 
     private Ignite ignite;
 
+    private final T userPredicate;
 
-    public SearchTask(@NotNull Set<Facet> searchFacets) {
-        this.searchFacets = searchFacets;
+
+    public SearchTask(@NotNull Collection<FacetRank> searchFacetRanks, T userPredicate) {
+        this.searchFacetRanks = searchFacetRanks;
+        this.userPredicate = userPredicate;
     }
 
     @Nullable
@@ -38,7 +40,7 @@ class SearchTask extends ComputeTaskAdapter<Object, List<SearchResult>> {
         Map<SearchJob, ClusterNode> map = new HashMap<>(subgrid.size());
 
         subgrid.forEach(clusterNode -> {
-            map.put(new SearchJob(searchFacets), clusterNode);
+            map.put(new SearchJob<T>(searchFacetRanks, userPredicate), clusterNode);
         });
 
         return map;
@@ -56,25 +58,25 @@ class SearchTask extends ComputeTaskAdapter<Object, List<SearchResult>> {
                                                     })
                                                     .collect(Collectors.toSet());
 
-        Map<FacetKey, List<Facet>> facetKeyListMap = documentIndexes.stream()
-                                                                    .flatMap(documentIndex -> {
-                                                                        Set<Facet> facets = documentIndex.getFacets()
-                                                                                                         .stream()
-                                                                                                         .collect(Collectors.toSet());
+        Map<Facet, List<FacetRank>> facetKeyListMap = documentIndexes.stream()
+                                                                     .flatMap(documentIndex -> {
+                                                                         Set<FacetRank> facetRanks = documentIndex.getFacetRanks()
+                                                                                                                  .stream()
+                                                                                                                  .collect(Collectors.toSet());
 
-                                                                        return facets.stream();
-                                                                    })
-                                                                    .collect(Collectors.groupingBy(new Function<Facet, FacetKey>() {
-                                                                        @Override
-                                                                        public FacetKey apply(Facet facet) {
-                                                                            return facet.getKey();
-                                                                        }
-                                                                    }));
+                                                                         return facetRanks.stream();
+                                                                     })
+                                                                     .collect(Collectors.groupingBy(new Function<FacetRank, Facet>() {
+                                                                         @Override
+                                                                         public Facet apply(FacetRank facet) {
+                                                                             return facet.getKey();
+                                                                         }
+                                                                     }));
 
 
-        int totalDocuments = ignite.getOrCreateCache(SearchServiceImpl.getDocumentsCacheConfiguration()).size();
+        int totalDocuments = ignite.getOrCreateCache(DraeneiSearchService.getDocumentsCacheConfiguration()).size();
 
-        Map<FacetKey, Double> facetIdfMap = new HashMap<>();
+        Map<Facet, Double> facetIdfMap = new HashMap<>();
 
         facetKeyListMap.entrySet()
                        .forEach(entry -> {
@@ -85,31 +87,34 @@ class SearchTask extends ComputeTaskAdapter<Object, List<SearchResult>> {
 
         SimilarityCosineAlgorithm algorithm = new SimilarityCosineAlgorithm(MetricsFactoryImpl.getInstance());
 
-        List<Facet> searchFacetTfIdf = searchFacets.stream()
-                                                   .map(facet -> {
-                                                       FacetKey facetKey = facet.getKey();
-                                                       double tfIdf = TfIdfUtils.calculateTfIdf(facet.getRank(), facetIdfMap.getOrDefault(facetKey, 0d));
-                                                       return new Facet(facetKey, tfIdf, facet.getDocument());
-                                                   })
-                                                   .collect(Collectors.toList());
+        List<FacetRank> searchFacetRankTfIdf = searchFacetRanks.stream()
+                                                               .map(facet -> {
+                                                                   Facet facetKey = facet.getKey();
+                                                                   Double searchIdf = TfIdfUtils.calculateIdf(1, searchFacetRanks.size());//facetIdfMap.getOrDefault(facetKey, 1d);
+                                                                   double tfIdf = TfIdfUtils.calculateTfIdf(facet.getRank(), searchIdf);
+                                                                   return new FacetRank(facetKey, tfIdf, facet.getDocument());
+                                                               })
+                                                               .collect(Collectors.toList());
         Timer.Context mapDocumentsTimer = MetricsFactoryImpl.getTimer("search_task.reduce.documents_map").time();
 
         List<SearchResult> searchResults = documentIndexes.stream()
                                                           .map(documentIndex -> {
-                                                              Set<Facet> tfIdfFacets = documentIndex.getFacets()
-                                                                                                    .stream()
-                                                                                                    .map(facet -> {
-                                                                                                        FacetKey facetKey = facet.getKey();
-                                                                                                        double tfIdf = TfIdfUtils.calculateTfIdf(facet.getRank(), facetIdfMap.getOrDefault(facetKey, 0d));
-                                                                                                        return new Facet(facetKey, tfIdf, facet.getDocument());
-                                                                                                    })
-                                                                                                    .collect(Collectors.toSet());
+                                                              Set<FacetRank> tfIdfFacetRanks = documentIndex.getFacetRanks()
+                                                                                                            .stream()
+                                                                                                            .map(facet -> {
+                                                                                                                Facet facetKey = facet.getKey();
+                                                                                                                double tfIdf = TfIdfUtils.calculateTfIdf(facet.getRank(), facetIdfMap
+                                                                                                                        .getOrDefault(facetKey, 0d));
+                                                                                                                return new FacetRank(facetKey, tfIdf, facet.getDocument());
+                                                                                                            })
+                                                                                                            .collect(Collectors.toSet());
 
 
-                                                              double similarity = algorithm.getSimilarity(tfIdfFacets, searchFacetTfIdf);
+                                                              double similarity = algorithm.getSimilarity(tfIdfFacetRanks, searchFacetRankTfIdf);
 
                                                               return new SearchResult(documentIndex.getDocument(), similarity);
                                                           })
+                                                          .filter(searchResult -> searchResult.getRank() > 0)
                                                           .sorted()
                                                           .collect(Collectors.toList());
 

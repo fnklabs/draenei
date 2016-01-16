@@ -188,17 +188,14 @@ class EntityMetadata {
 
             for (PropertyDescriptor propertyDescriptor : beanInfo.getPropertyDescriptors()) {
 
-                try {
-                    ColumnMetadata columnMetadata = ColumnMetadata.buildColumnMetadata(propertyDescriptor, clazz, tableMetadata);
+                ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, clazz, tableMetadata);
 
-                    if (columnMetadata != null) {
-                        entityMetadata.addColumnMetadata(columnMetadata);
-                    }
-
-                    LOGGER.debug("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
-                } catch (NoSuchFieldException e) {
-//                    LOGGER.warn("Cant build column metadata", e);
+                if (columnMetadata != null) {
+                    entityMetadata.addColumnMetadata(columnMetadata);
                 }
+
+                LOGGER.debug("Property descriptor: {} {}", propertyDescriptor.getName(), propertyDescriptor.getDisplayName());
+
             }
         } catch (IntrospectionException e) {
             LOGGER.warn("Can't build column metadata", e);

@@ -1,7 +1,7 @@
 package com.fnklabs.draenei.analytics.search;
 
 
-class TfIdfUtils {
+public class TfIdfUtils {
     public static double calculateTfIdf(double tf, double idf) {
         return tf * idf;
     }

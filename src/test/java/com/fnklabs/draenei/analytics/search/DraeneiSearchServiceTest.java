@@ -5,13 +5,17 @@ import com.fnklabs.draenei.MetricsFactoryImpl;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cluster.ClusterGroup;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.net.UnknownHostException;
 import java.security.SecureRandom;
+import java.util.Collection;
 import java.util.List;
 
-public class SearchServiceImplTest {
+public class DraeneiSearchServiceTest {
 
     private static final int MAX_DOCUMENTS = 40000;
     private static final String[] WORDS = {
@@ -33,9 +37,9 @@ public class SearchServiceImplTest {
         ClusterGroup clusterGroup = ignite.cluster().forServers();
 
         ignite.services(clusterGroup)
-              .deployMultiple(SearchServiceImpl.SERVICE_NAME, new SearchServiceImpl(), 3, 1);
+              .deployMultiple(DraeneiSearchService.SERVICE_NAME, new DraeneiSearchService(), 3, 1);
 
-        searchService = ignite.services().<SearchService>serviceProxy(SearchServiceImpl.SERVICE_NAME, SearchService.class, true);
+        searchService = ignite.services().<SearchService>serviceProxy(DraeneiSearchService.SERVICE_NAME, SearchService.class, true);
 
         SecureRandom secureRandom = new SecureRandom();
 
@@ -54,15 +58,10 @@ public class SearchServiceImplTest {
         }
     }
 
-    @Test
-    @Ignore
-    public void testRebuildDocumentIndex() throws UnknownHostException {
-        searchService.rebuildDocumentIndex();
-    }
 
     @Test
     public void testSearch() throws UnknownHostException {
-        List<SearchResult> searchResults = searchService.search("образом предсказывают эксперименты");
+        Collection<SearchResult> searchResults = searchService.search("образом предсказывают эксперименты");
 
         Assert.assertNotNull(searchResults);
         Assert.assertFalse(searchResults.isEmpty());
@@ -70,7 +69,7 @@ public class SearchServiceImplTest {
 
     @Test
     public void testGetRecommendation() throws Exception {
-        List<SearchResult> searchResults = searchService.getRecommendation(2);
+        Collection<SearchResult> searchResults = searchService.getSimilar(2);
 
         Assert.assertNotNull(searchResults);
         Assert.assertFalse(searchResults.isEmpty());

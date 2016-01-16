@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Interface for implementing similarity algorithm
  */
-interface SimilarityAlgorithm {
+public interface SimilarityAlgorithm {
     /**
      * Get similarity among two specified clusters
      * <p>
@@ -19,7 +19,5 @@ interface SimilarityAlgorithm {
      *
      * @return Similarity index
      */
-    <T extends Facet, K extends Facet> double getSimilarity(@NotNull Collection<T> firstFacet, @NotNull Collection<K> secondFacet);
-
-
+    <T extends FacetRank, K extends FacetRank> double getSimilarity(@NotNull Collection<T> firstFacet, @NotNull Collection<K> secondFacet);
 }

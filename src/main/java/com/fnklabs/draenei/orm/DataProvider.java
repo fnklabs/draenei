@@ -97,6 +97,9 @@ public class DataProvider<V> {
         this.executorService = ExecutorServiceFactory.DEFAULT_EXECUTOR;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
+
+
+//        DATA_PROVIDERS_REGISTRY.(clazz, this);
     }
 
     /**

@@ -1,8 +1,20 @@
 package com.fnklabs.draenei.orm;
 
-import java.beans.PropertyDescriptor;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-class PrimaryKeyMetadata<T> extends ColumnMetadata<T> {
+import java.nio.ByteBuffer;
+
+
+/**
+ * PrimaryKey metadata decorator
+ */
+class PrimaryKeyMetadata implements ColumnMetadata {
+    /**
+     * Column metadata object
+     */
+    private final ColumnMetadata columnMetadata;
+
     /**
      * Primary key order
      */
@@ -13,21 +25,14 @@ class PrimaryKeyMetadata<T> extends ColumnMetadata<T> {
      */
     private final boolean isPartitionKey;
 
-
     /**
-     * @param propertyDescriptor Field property descriptor
-     * @param name               Primary key name
-     * @param order              Primary key order (from 0 to n) 0 means first
-     * @param isPartitionKey     Flag that can determine if current key is belong to partition keys
-     * @param type               Field java class type
+     * @param columnMetadata Decorated column metadata
+     * @param order          Primary key order (from 0 to n) 0 means first
+     * @param isPartitionKey Flag that can determine if current key is belong to partition keys
      */
-    public PrimaryKeyMetadata(PropertyDescriptor propertyDescriptor,
-                              String name,
-                              int order,
-                              boolean isPartitionKey,
-                              Class<T> type,
-                              com.datastax.driver.core.ColumnMetadata columnMetadata) {
-        super(propertyDescriptor, type, name, columnMetadata);
+    protected PrimaryKeyMetadata(ColumnMetadata columnMetadata, int order, boolean isPartitionKey) {
+        this.columnMetadata = columnMetadata;
+
         this.order = order;
         this.isPartitionKey = isPartitionKey;
     }
@@ -38,5 +43,38 @@ class PrimaryKeyMetadata<T> extends ColumnMetadata<T> {
 
     public boolean isPartitionKey() {
         return isPartitionKey;
+    }
+
+    @NotNull
+    @Override
+    public String getName() {
+        return columnMetadata.getName();
+    }
+
+    @NotNull
+    @Override
+    public Class getFieldType() {
+        return columnMetadata.getFieldType();
+    }
+
+    @Override
+    public void writeValue(@NotNull Object entity, @Nullable Object value) {
+        columnMetadata.writeValue(entity, value);
+    }
+
+    @Nullable
+    @Override
+    public <FieldType> FieldType readValue(@NotNull Object object) throws ClassCastException {
+        return columnMetadata.readValue(object);
+    }
+
+    @Override
+    public ByteBuffer serialize(Object value) {
+        return null;
+    }
+
+    @Override
+    public <T> T deserialize(@Nullable ByteBuffer data) {
+        return null;
     }
 }

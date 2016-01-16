@@ -8,17 +8,22 @@ import java.io.Serializable;
 import java.util.Objects;
 
 /**
- * Facet type of object
+ * Document facet type
  */
-final class FacetType implements Serializable {
+final public class FacetType implements Serializable {
     /**
-     * Facet type name
+     * Stub facet name for text facets
+     */
+    public static final String UNKNOWN = "unknown";
+
+    /**
+     * Facet name (Document field name)
      */
     @NotNull
     private final String name;
 
     /**
-     * Facet class type
+     * Facet value class type (document field class type)
      */
     @NotNull
     private final Class type;
@@ -59,7 +64,7 @@ final class FacetType implements Serializable {
     public String toString() {
         return MoreObjects.toStringHelper(this)
                           .add("name", getName())
-                          .add("type", getType())
+                          .add("type", getType().getName())
                           .toString();
     }
 }

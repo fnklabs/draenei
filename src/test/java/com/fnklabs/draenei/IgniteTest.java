@@ -1,5 +1,6 @@
 package com.fnklabs.draenei;
 
+import com.fnklabs.draenei.orm.annotations.Enumerated;
 import com.google.common.base.MoreObjects;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -270,10 +271,15 @@ public class IgniteTest implements Serializable {
         return cacheCfg;
     }
 
+    enum TestEnum{
+
+    }
+
     static class TestObject extends TestClass implements Serializable {
         private UUID id = UUID.randomUUID();
 
         @QueryTextField
+        @Enumerated(enumType = TestEnum.class)
         private String title;
 
         @QueryTextField

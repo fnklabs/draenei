@@ -2,18 +2,19 @@ package com.fnklabs.draenei.analytics.search;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.io.Serializable;
 import java.util.Set;
 
-public class DocumentIndex {
+public class DocumentIndex implements Serializable {
     @NotNull
     private final Document document;
 
     @NotNull
-    private final Set<Facet> facets;
+    private final Set<FacetRank> facetRanks;
 
-    public DocumentIndex(@NotNull Document document, @NotNull Set<Facet> facets) {
+    public DocumentIndex(@NotNull Document document, @NotNull Set<FacetRank> facetRanks) {
         this.document = document;
-        this.facets = facets;
+        this.facetRanks = facetRanks;
     }
 
     @NotNull
@@ -22,7 +23,7 @@ public class DocumentIndex {
     }
 
     @NotNull
-    public Set<Facet> getFacets() {
-        return facets;
+    public Set<FacetRank> getFacetRanks() {
+        return facetRanks;
     }
 }

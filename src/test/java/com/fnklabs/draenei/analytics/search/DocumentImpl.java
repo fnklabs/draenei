@@ -1,5 +1,7 @@
 package com.fnklabs.draenei.analytics.search;
 
+import org.jetbrains.annotations.NotNull;
+
 class DocumentImpl implements Document {
     private long id;
 
@@ -11,6 +13,7 @@ class DocumentImpl implements Document {
         this.text = text;
     }
 
+    @NotNull
     @Override
     public Long getId() {
         return id;
@@ -20,11 +23,9 @@ class DocumentImpl implements Document {
         this.id = id;
     }
 
-    @Override
-    public Object getDocument() {
+    public String getText() {
         return text;
     }
-
 
     public void setText(String text) {
         this.text = text;

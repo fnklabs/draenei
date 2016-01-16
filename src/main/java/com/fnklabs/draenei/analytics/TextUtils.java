@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.function.Predicate;
 
 /**
  * Text utils that help
@@ -103,15 +104,8 @@ public class TextUtils {
             List<String> morphInfo = MorphologyFactory.getMorphology(language).getMorphInfo(word);
             morphTimer.stop();
 
-            return !(StringUtils.contains(morphInfo.get(0), "МЕЖД")
-                    || StringUtils.contains(morphInfo.get(0), "ПРЕДЛ")
-                    || StringUtils.contains(morphInfo.get(0), "ЧАСТ")
-                    || StringUtils.contains(morphInfo.get(0), "МС")
-                    || StringUtils.contains(morphInfo.get(0), "СОЮЗ")
-                    || StringUtils.contains(morphInfo.get(0), "ARTICLE")
-                    || StringUtils.contains(morphInfo.get(0), "PREP")
-                    || StringUtils.contains(morphInfo.get(0), "PN")
-                    || StringUtils.contains(morphInfo.get(0), "CONJ"));
+            return morphInfo.stream()
+                            .allMatch(new MorphRulesPredicate());
 
         } catch (Exception e) {
             LOGGER.warn("Can't get morph info: {" + word + "} ", e);
@@ -120,6 +114,38 @@ public class TextUtils {
         }
 
         return false;
+    }
+
+    private static class MorphRulesPredicate implements Predicate<String> {
+
+        /**
+         * Evaluates this predicate on the given argument.
+         *
+         * @param morphInfo the input argument
+         *
+         * @return {@code true} if the input argument matches the predicate,
+         * otherwise {@code false}
+         */
+        @Override
+        public boolean test(String morphInfo) {
+            return checkRussianRules(morphInfo) && checkEnglishRules(morphInfo);
+        }
+
+        private boolean checkEnglishRules(String morphInfo) {
+            return !StringUtils.contains(morphInfo, "ARTICLE")
+                    && !StringUtils.contains(morphInfo, "PREP")
+                    && !StringUtils.contains(morphInfo, "PN")
+                    && !StringUtils.contains(morphInfo, "CONJ");
+        }
+
+        private boolean checkRussianRules(String morphInfo) {
+            return !StringUtils.contains(morphInfo, "МЕЖД")
+                    && !StringUtils.contains(morphInfo, "ПРЕДЛ")
+                    && !StringUtils.contains(morphInfo, "ЧАСТ")
+                    && !StringUtils.contains(morphInfo, "МС")
+                    && !StringUtils.contains(morphInfo, "СОЮЗ")
+                    && !StringUtils.endsWith(morphInfo, "Н");
+        }
     }
 
     @NotNull
