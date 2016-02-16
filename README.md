@@ -52,7 +52,7 @@ class User {
 }
 ```
 
-Entity can contains several partition keys in this case you must set order value for each partition
+Entity can contains several partition keys in this case you must set order value for each primary key
  
 ```java
 class User {
@@ -120,10 +120,8 @@ class User {
     private String email;
 
 }
-
-All other fields in Table annotation is optional and not used in current implementation
-
 ``` 
+All other fields in Table annotation is optional and not used in current implementation
 
 ## Entity (Complete class)
 
@@ -152,6 +150,7 @@ class User {
 # DataProvider
 
 There are two several implementation of DataProvider:
+
 1. com.fnklabs.draenei.orm.DataProvider (base implementation)
 2. com.fnklabs.draenei.orm.CacheableDataProvider (use data grid for caching)
 
@@ -187,7 +186,7 @@ public class Example {
 
 ### Find data
 
-When calling find method use must provide all partition keys
+When calling find method you must provide all partition keys
 
 ```java
 public class Example {
