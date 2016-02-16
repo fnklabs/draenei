@@ -5,6 +5,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,8 +42,6 @@ class EnumeratedMetadata implements ColumnMetadata {
 
     @Override
     public ByteBuffer serialize(final Object value) {
-
-
         if (value == null) {
             return null;
         }
@@ -50,10 +49,9 @@ class EnumeratedMetadata implements ColumnMetadata {
 
         if (value instanceof Collection) {
             Collection<Object> collection = (Collection<Object>) value;
+
             Stream<String> enumStream = collection.stream()
-                                                  .map(enumValue -> enumValue.toString());
-
-
+                                                  .map(new MapEnumToString());
             if (value instanceof Set) {
                 Set<String> setValue = enumStream.collect(Collectors.toSet());
 
@@ -63,10 +61,25 @@ class EnumeratedMetadata implements ColumnMetadata {
 
                 return columnMetadata.serialize(listValue);
             }
+
+
         }
 
+        return columnMetadata.serialize(value.toString());
+    }
 
-        return columnMetadata.serialize(value);
+    private static class MapEnumToString implements Function<Object, String> {
+
+        @Override
+        public String apply(Object o) {
+            try {
+                return o.toString();
+            } catch (NullPointerException e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        }
     }
 
     @Override
@@ -116,6 +129,4 @@ class EnumeratedMetadata implements ColumnMetadata {
     public <FieldType> FieldType readValue(@NotNull Object object) {
         return columnMetadata.readValue(object);
     }
-
-
 }

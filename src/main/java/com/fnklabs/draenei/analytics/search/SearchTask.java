@@ -1,7 +1,7 @@
 package com.fnklabs.draenei.analytics.search;
 
-import com.codahale.metrics.Timer;
-import com.fnklabs.draenei.MetricsFactoryImpl;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterNode;
@@ -50,7 +50,7 @@ public class SearchTask<T extends Predicate<DocumentIndex> & Serializable> exten
     @Override
     public List<SearchResult> reduce(List<ComputeJobResult> results) throws IgniteException {
 
-        Timer.Context totalTimer = MetricsFactoryImpl.getTimer("search_task.reduce.total").time();
+        Timer totalTimer = MetricsFactory.getMetrics().getTimer("search_task.reduce.total");
 
         Set<DocumentIndex> documentIndexes = results.stream()
                                                     .flatMap(computeJobResult -> {
@@ -85,7 +85,7 @@ public class SearchTask<T extends Predicate<DocumentIndex> & Serializable> exten
                            facetIdfMap.put(entry.getKey(), idf);
                        });
 
-        SimilarityCosineAlgorithm algorithm = new SimilarityCosineAlgorithm(MetricsFactoryImpl.getInstance());
+        SimilarityCosineAlgorithm algorithm = new SimilarityCosineAlgorithm();
 
         List<FacetRank> searchFacetRankTfIdf = searchFacetRanks.stream()
                                                                .map(facet -> {
@@ -95,7 +95,7 @@ public class SearchTask<T extends Predicate<DocumentIndex> & Serializable> exten
                                                                    return new FacetRank(facetKey, tfIdf, facet.getDocument());
                                                                })
                                                                .collect(Collectors.toList());
-        Timer.Context mapDocumentsTimer = MetricsFactoryImpl.getTimer("search_task.reduce.documents_map").time();
+        Timer mapDocumentsTimer = MetricsFactory.getMetrics().getTimer("search_task.reduce.documents_map");
 
         List<SearchResult> searchResults = documentIndexes.stream()
                                                           .map(documentIndex -> {

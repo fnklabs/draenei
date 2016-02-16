@@ -1,7 +1,7 @@
 package com.fnklabs.draenei.orm;
 
-import com.codahale.metrics.Timer;
-import com.fnklabs.draenei.MetricsFactory;
+
+import com.fnklabs.metrics.Timer;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -37,22 +38,16 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     private final IgniteCache<Long, Entry> cache;
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz,
-                                 @NotNull CassandraClientFactory cassandraClient,
-                                 @NotNull Ignite ignite,
-                                 @NotNull ExecutorService executorService,
-                                 @NotNull MetricsFactory metricsFactory) {
-
-        super(clazz, cassandraClient, executorService, metricsFactory);
+    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite, @NotNull ExecutorService executorService) {
+        super(clazz, cassandraClient, executorService);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
         initializeEventListener(ignite);
-
     }
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite, @NotNull MetricsFactory metricsFactory) {
-        super(clazz, cassandraClient, metricsFactory);
+    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite) {
+        super(clazz, cassandraClient);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
@@ -61,14 +56,14 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     @Override
     public ListenableFuture<Entry> findOneAsync(Object... keys) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND).time();
+        Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name());
 
         long cacheKey = buildHashCode(keys);
 
         Entry entry = cache.get(cacheKey);
 
         if (entry != null) {
-            getMetricsFactory().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS).inc();
+            getMetrics().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS.name()).inc();
 
             return Futures.immediateFuture(entry);
         }
@@ -95,6 +90,37 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         return findFuture;
     }
 
+    @Override
+    public Entry findOne(Object... keys) {
+        Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name());
+
+        long cacheKey = buildHashCode(keys);
+
+        Entry entry = cache.get(cacheKey);
+
+        if (entry != null) {
+            getMetrics().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS.name()).inc();
+
+            time.stop();
+
+        } else {
+            entry = super.findOne(keys);
+
+            if (entry != null) {
+                cache.put(cacheKey, entry);
+            }
+        }
+
+        time.stop();
+
+        return entry;
+    }
+
+    @Override
+    public List<Entry> find(Object... keys) {
+        return super.find(keys);
+    }
+
     /**
      * Execute entry processor on entry cache
      *
@@ -117,7 +143,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      */
     @Override
     public ListenableFuture<Boolean> saveAsync(@NotNull Entry entity) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE).time();
+        Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE.name());
 
         long cacheKey = buildHashCode(entity);
 
@@ -137,7 +163,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      */
     public ListenableFuture<Boolean> removeAsync(@NotNull Entry entity) {
 
-        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE).time();
+        Timer timer = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE.name());
 
         long key = buildHashCode(entity);
 
@@ -176,19 +202,11 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
                       EventType.EVT_CACHE_OBJECT_REMOVED);
     }
 
-    @NotNull
-    private String getMapName(Class<Entry> clazz) {
-        return CacheUtils.getCacheName(clazz);
-    }
-
-    protected enum MetricsType implements MetricsFactory.Type {
+    protected enum MetricsType {
         CACHEABLE_DATA_PROVIDER_FIND,
         CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE,
-        CACHEABLE_DATA_PROVIDER_CREATE_KEY,
         CACHEABLE_DATA_PROVIDER_HITS,
-        CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE,
-        CACHEABLE_DATA_GET_FROM_DATA_GRID,
-        CACHEABLE_DATA_PROVIDER_PUT_ASYNC;
+        CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE;
 
     }
 

@@ -3,6 +3,7 @@ package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.ProtocolVersion;
 import com.fnklabs.draenei.orm.exception.MetadataException;
+import com.google.common.base.MoreObjects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -167,5 +168,10 @@ class BaseColumnMetadata implements ColumnMetadata {
         return writeMethod;
     }
 
-
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                          .add("name", getName())
+                          .toString();
+    }
 }

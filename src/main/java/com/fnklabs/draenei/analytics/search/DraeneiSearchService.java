@@ -1,9 +1,8 @@
 package com.fnklabs.draenei.analytics.search;
 
-import com.codahale.metrics.Timer;
-import com.fnklabs.draenei.MetricsFactory;
-import com.fnklabs.draenei.MetricsFactoryImpl;
 import com.fnklabs.draenei.analytics.TextUtils;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -67,7 +66,6 @@ public class DraeneiSearchService implements Service, SearchService {
     private transient IgniteCache<Long, Document> documentsCache;
     @Nullable
     private transient IgniteCache<Long, DocumentIndex> documentIndexCache;
-    private transient MetricsFactory metricsFactory;
     private transient Predicate<Facet> NotStopWordPredicate;
 
     /**
@@ -91,7 +89,7 @@ public class DraeneiSearchService implements Service, SearchService {
     @NotNull
     @Override
     public Collection<SearchResult> search(@NotNull String text) {
-        Timer.Context timer = MetricsFactoryImpl.getTimer("search_service.search").time();
+        Timer timer = MetricsFactory.getMetrics().getTimer("search_service.search");
 
         Collection<SearchResult> searchResults = search(buildFacets(text), AlwaysTruePredicate.INSTANCE);
 
@@ -103,7 +101,7 @@ public class DraeneiSearchService implements Service, SearchService {
     @NotNull
     @Override
     public <T extends Predicate<DocumentIndex> & Serializable> Collection<SearchResult> search(@NotNull Collection<Facet> facets, T userPredicate) {
-        Timer.Context timer = MetricsFactoryImpl.getTimer("search_service.search").time();
+        Timer timer = MetricsFactory.getMetrics().getTimer("search_service.search");
 
         ClusterGroup clusterGroup = ignite.cluster().forServers();
 
@@ -118,7 +116,7 @@ public class DraeneiSearchService implements Service, SearchService {
     @NotNull
     @Override
     public Collection<SearchResult> getSimilar(long documentId) {
-        Timer.Context timer = MetricsFactoryImpl.getTimer("search_service.recommendation.get").time();
+        Timer timer = MetricsFactory.getMetrics().getTimer("search_service.recommendation.get");
 
         ClusterGroup clusterGroup = ignite.cluster().forServers();
 
@@ -149,8 +147,6 @@ public class DraeneiSearchService implements Service, SearchService {
             documentsCache = ignite.getOrCreateCache(getDocumentsCacheConfiguration());
             documentIndexCache = ignite.getOrCreateCache(getDocumentIndexCacheConfiguration());
         }
-
-        metricsFactory = new MetricsFactoryImpl();
 
         setClusteringAlgorithm(createClusteringAlgorithm());
         setSimilarityAlgorithm(createSimilarityAlgorithm());
@@ -212,12 +208,12 @@ public class DraeneiSearchService implements Service, SearchService {
 
     @NotNull
     protected SimilarityAlgorithm createSimilarityAlgorithm() {
-        return new SimilarityCosineAlgorithm(metricsFactory);
+        return new SimilarityCosineAlgorithm();
     }
 
     @NotNull
     protected ClusteringAlgorithm createClusteringAlgorithm() {
-        return new ClusteringTermAlgorithm(new TextUtils(metricsFactory));
+        return new ClusteringTermAlgorithm(new TextUtils());
     }
 
     protected void setSimilarityAlgorithm(@Nullable SimilarityAlgorithm similarityAlgorithm) {

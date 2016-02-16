@@ -1,6 +1,5 @@
 package com.fnklabs.draenei.orm;
 
-import com.codahale.metrics.Timer;
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.querybuilder.Delete;
@@ -9,10 +8,12 @@ import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.ExecutorServiceFactory;
-import com.fnklabs.draenei.MetricsFactory;
 import com.fnklabs.draenei.orm.exception.CanNotBuildEntryCacheKey;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.fnklabs.draenei.orm.exception.QueryException;
+import com.fnklabs.metrics.Metrics;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.util.concurrent.Futures;
@@ -43,25 +44,20 @@ public class DataProvider<V> {
      * Map for saving DataProviders by DataProvider class
      */
     private static final Map<Class, DataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
-
+    @NotNull
+    private static final com.fnklabs.metrics.Metrics METRICS = MetricsFactory.getMetrics();
     /**
      * Entity class
      */
     @NotNull
     private final Class<V> clazz;
-
     /**
      * Current entity metadata
      */
     @NotNull
     private final EntityMetadata entityMetadata;
-
     @NotNull
     private final CassandraClientFactory cassandraClient;
-
-    @NotNull
-    private final MetricsFactory metricsFactory;
-
     @NotNull
     private final Function<Row, V> mapToObjectFunction;
 
@@ -74,32 +70,21 @@ public class DataProvider<V> {
      * @param clazz                  Entity class
      * @param cassandraClientFactory CassandraClientFactory instance
      * @param executorService        ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
-     * @param metricsFactory         MetricsFactory MetricsFactory instance
      */
-    public DataProvider(@NotNull Class<V> clazz,
-                        @NotNull CassandraClientFactory cassandraClientFactory,
-                        @NotNull ExecutorService executorService,
-                        @NotNull MetricsFactory metricsFactory) {
+    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull ExecutorService executorService) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClientFactory;
         this.executorService = executorService;
-        this.metricsFactory = metricsFactory;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
     }
 
-    public DataProvider(@NotNull Class<V> clazz,
-                        @NotNull CassandraClientFactory cassandraClient,
-                        @NotNull MetricsFactory metricsFactory) {
+    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClient) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClient;
-        this.metricsFactory = metricsFactory;
         this.executorService = ExecutorServiceFactory.DEFAULT_EXECUTOR;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
-
-
-//        DATA_PROVIDERS_REGISTRY.(clazz, this);
     }
 
     /**
@@ -107,17 +92,14 @@ public class DataProvider<V> {
      *
      * @param clazz                  DataProvider class
      * @param cassandraClientFactory CassandraClientFactory instance
-     * @param metricsFactory         MetricsFactory instance
      * @param <T>                    DataProvider class type
      *
      * @return DataProvider instance
      */
-    public static <T> DataProvider<T> getDataProvider(Class<T> clazz,
-                                                      @NotNull CassandraClientFactory cassandraClientFactory,
-                                                      @NotNull MetricsFactory metricsFactory) {
+    public static <T> DataProvider<T> getDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory) {
         return DATA_PROVIDERS_REGISTRY.compute(clazz, (dataProviderClass, dataProvider) -> {
             if (dataProvider == null) {
-                return new DataProvider<T>(clazz, cassandraClientFactory, metricsFactory);
+                return new DataProvider<T>(clazz, cassandraClientFactory);
             }
             return dataProvider;
         });
@@ -131,7 +113,7 @@ public class DataProvider<V> {
      * @return Cache key
      */
     public long buildHashCode(@NotNull V entity) {
-        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY).time();
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
 
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
@@ -163,7 +145,7 @@ public class DataProvider<V> {
      * @return Operation status result
      */
     public ListenableFuture<Boolean> saveAsync(@NotNull V entity) {
-        Timer.Context saveAsyncTimer = metricsFactory.getTimer(MetricsType.DATA_PROVIDER_SAVE).time();
+        Timer saveAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_SAVE.name());
 
         Insert insert = QueryBuilder.insertInto(getEntityMetadata().getTableName());
 
@@ -200,7 +182,7 @@ public class DataProvider<V> {
      * @return Operation status result
      */
     public ListenableFuture<Boolean> removeAsync(@NotNull V entity) {
-        Timer.Context removeAsyncTimer = metricsFactory.getTimer(MetricsType.DATA_PROVIDER_REMOVE).time();
+        Timer removeAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_REMOVE.name());
 
         Delete from = QueryBuilder.delete()
                                   .from(getEntityMetadata().getTableName());
@@ -264,7 +246,7 @@ public class DataProvider<V> {
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public ListenableFuture<V> findOneAsync(Object... keys) {
-        Timer.Context time = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_FIND_ONE).time();
+        Timer time = getMetrics().getTimer(MetricsType.DATA_PROVIDER_FIND_ONE.name());
 
         ListenableFuture<V> transform = Futures.transform(findAsync(keys), (List<V> result) -> result.isEmpty() ? null : result.get(0));
 
@@ -280,16 +262,54 @@ public class DataProvider<V> {
      *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
+    public V findOne(Object... keys) {
+        Timer time = getMetrics().getTimer(MetricsType.DATA_PROVIDER_FIND_ONE.name());
+
+        List<V> resultList = find(keys);
+
+        time.stop();
+
+        return resultList.isEmpty() ? null : resultList.get(0);
+    }
+
+    /**
+     * Get record async by specified keys and send result to consumer
+     *
+     * @param keys Primary keys
+     *
+     * @return True if result will be completed successfully and False if result will be completed with error
+     */
     public ListenableFuture<List<V>> findAsync(Object... keys) {
-        Timer.Context timer = getMetricsFactory().getTimer(MetricsType.DATA_PROVIDER_FIND).time();
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_FIND.name());
 
         List<Object> parameters = new ArrayList<>();
 
         Collections.addAll(parameters, keys);
 
-        ListenableFuture<List<V>> resultFuture = fetch(parameters);
+        ListenableFuture<List<V>> resultFuture = fetchAsync(parameters);
 
         monitorFuture(timer, resultFuture);
+
+        return resultFuture;
+    }
+
+    /**
+     * Get records  by specified keys and send result to consumer
+     *
+     * @param keys Primary keys
+     *
+     * @return True if result will be completed successfully and False if result will be completed with error
+     */
+    public List<V> find(Object... keys) {
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_FIND.name());
+
+        List<Object> parameters = new ArrayList<>();
+
+        Collections.addAll(parameters, keys);
+
+        List<V> resultFuture = fetch(parameters);
+
+        timer.stop();
 
         return resultFuture;
     }
@@ -339,6 +359,7 @@ public class DataProvider<V> {
         int loadedItems = 0;
 
         while (iterator.hasNext()) {
+            METRICS.getCounter(MetricsType.DATA_PROVIDER_LOAD_BY_TOKEN_RANGE.name()).inc();
             Row next = iterator.next();
 
             V instance = mapToObject(next);
@@ -372,25 +393,62 @@ public class DataProvider<V> {
     }
 
     @NotNull
-    protected MetricsFactory getMetricsFactory() {
-        return metricsFactory;
+    protected Metrics getMetrics() {
+        return METRICS;
     }
 
-    protected String getTableName() {
-        return getEntityMetadata().getTableName();
-    }
-
-    protected int getMaxFetchSize() {
-        return getEntityMetadata().getMaxFetchSize();
-    }
-
-    protected ListenableFuture<List<V>> fetch(List<Object> keys) {
+    protected ListenableFuture<List<V>> fetchAsync(List<Object> keys) {
         List<V> result = new ArrayList<>();
 
-        return Futures.transform(fetch(keys, result::add), (Boolean fetchResult) -> result);
+        return Futures.transform(fetchAsync(keys, result::add), (Boolean fetchResult) -> result);
     }
 
-    protected ListenableFuture<Boolean> fetch(List<Object> keys, Consumer<V> consumer) {
+    protected ListenableFuture<Boolean> fetchAsync(List<Object> keys, Consumer<V> consumer) {
+        BoundStatement boundStatement = getFetchBoundStatement(keys);
+
+        ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
+
+        return Futures.transform(resultSetFuture, (ResultSet resultSet) -> {
+            Iterator<Row> iterator = resultSet.iterator();
+
+            while (iterator.hasNext()) {
+                Row next = iterator.next();
+
+                V instance = mapToObject(next);
+
+                consumer.accept(instance);
+            }
+
+            return true;
+        }, getExecutorService());
+    }
+
+    protected List<V> fetch(List<Object> keys) {
+        List<V> result = new ArrayList<>();
+
+        fetch(keys, result::add);
+
+        return result;
+    }
+
+    protected void fetch(List<Object> keys, Consumer<V> consumer) {
+        BoundStatement boundStatement = getFetchBoundStatement(keys);
+
+        ResultSet resultSet = getCassandraClient().execute(boundStatement);
+
+        Iterator<Row> iterator = resultSet.iterator();
+
+        while (iterator.hasNext()) {
+            Row next = iterator.next();
+
+            V instance = mapToObject(next);
+
+            consumer.accept(instance);
+        }
+    }
+
+    @NotNull
+    private BoundStatement getFetchBoundStatement(List<Object> keys) {
         BoundStatement boundStatement;
 
         Select select = QueryBuilder.select()
@@ -443,55 +501,10 @@ public class DataProvider<V> {
 
         boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
         boundStatement.setConsistencyLevel(getEntityMetadata().getReadConsistencyLevel());
-
-        ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
-
-        return Futures.transform(resultSetFuture, (ResultSet resultSet) -> {
-            Iterator<Row> iterator = resultSet.iterator();
-
-            while (iterator.hasNext()) {
-                Row next = iterator.next();
-
-                V instance = mapToObject(next);
-
-                consumer.accept(instance);
-            }
-
-            return true;
-        }, getExecutorService());
+        return boundStatement;
     }
 
-    /**
-     * Map row result to object
-     *
-     * @param row ResultSet row
-     *
-     * @return Mapped object or null if can't map fields
-     */
-    @Nullable
-    protected V mapToObject(@NotNull Row row) {
-        return mapToObjectFunction.apply(row);
-    }
-
-    @NotNull
-    protected CassandraClient getCassandraClient() {
-        return cassandraClient.create();
-    }
-
-    @NotNull
-    protected final EntityMetadata getEntityMetadata() {
-        return entityMetadata;
-    }
-
-    protected ConsistencyLevel getReadConsistencyLevel() {
-        return getEntityMetadata().getReadConsistencyLevel();
-    }
-
-    protected ConsistencyLevel getWriteConsistencyLevel() {
-        return getEntityMetadata().getWriteConsistencyLevel();
-    }
-
-    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture) {
+    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
         return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
             @Override
             public Boolean apply(Input input) {
@@ -511,10 +524,40 @@ public class DataProvider<V> {
      *
      * @return Listenable future
      */
-    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer.Context timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
-        Futures.addCallback(listenableFuture, new FutureTimerCallback<Input>(timer));
+    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
+        Futures.addCallback(listenableFuture, new FutureTimerCallback<>(timer));
 
-        return Futures.transform(listenableFuture, new JdkFunctionWrapper<Input, Output>(userCallback));
+        return Futures.transform(listenableFuture, new JdkFunctionWrapper<>(userCallback));
+    }
+
+    private ConsistencyLevel getReadConsistencyLevel() {
+        return getEntityMetadata().getReadConsistencyLevel();
+    }
+
+    private ConsistencyLevel getWriteConsistencyLevel() {
+        return getEntityMetadata().getWriteConsistencyLevel();
+    }
+
+    @NotNull
+    private EntityMetadata getEntityMetadata() {
+        return entityMetadata;
+    }
+
+    /**
+     * Map row result to object
+     *
+     * @param row ResultSet row
+     *
+     * @return Mapped object or null if can't map fields
+     */
+    @Nullable
+    private V mapToObject(@NotNull Row row) {
+        return mapToObjectFunction.apply(row);
+    }
+
+    @NotNull
+    private CassandraClient getCassandraClient() {
+        return cassandraClient.create();
     }
 
     @NotNull
@@ -597,12 +640,13 @@ public class DataProvider<V> {
     }
 
 
-    private enum MetricsType implements MetricsFactory.Type {
+    private enum MetricsType {
         DATA_PROVIDER_FIND_ONE,
         DATA_PROVIDER_SAVE,
         DATA_PROVIDER_REMOVE,
         DATA_PROVIDER_FIND,
         DATA_PROVIDER_CREATE_KEY,
+        DATA_PROVIDER_LOAD_BY_TOKEN_RANGE;
     }
 
 

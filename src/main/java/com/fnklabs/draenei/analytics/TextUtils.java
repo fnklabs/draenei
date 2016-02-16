@@ -1,9 +1,10 @@
 package com.fnklabs.draenei.analytics;
 
-import com.codahale.metrics.Timer;
-import com.fnklabs.draenei.MetricsFactory;
+
 import com.fnklabs.draenei.analytics.morphology.Language;
 import com.fnklabs.draenei.analytics.morphology.MorphologyFactory;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.morphology.Morphology;
 import org.apache.lucene.morphology.WrongCharaterException;
@@ -27,14 +28,8 @@ public class TextUtils {
      */
     private static final Set<Character> SPECIAL_CHARACTERS;
 
-    @NotNull
-    private final MetricsFactory metricsFactory;
 
-    /**
-     * @param metricsFactory MetricsFactory
-     */
-    public TextUtils(@NotNull MetricsFactory metricsFactory) {
-        this.metricsFactory = metricsFactory;
+    public TextUtils() {
     }
 
     /**
@@ -46,7 +41,7 @@ public class TextUtils {
      */
     @NotNull
     public Set<String> getNormalForms(@NotNull String word, @NotNull Language language) {
-        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_GET_NORMAL_FORMS).time();
+        com.fnklabs.metrics.Timer timer = MetricsFactory.getMetrics().getTimer(MetricsType.TEXT_UTILS_GET_NORMAL_FORMS.name());
 
         Set<String> normalForms = new HashSet<>();
 
@@ -71,7 +66,7 @@ public class TextUtils {
      * @return List of text token
      */
     public List<String> extractWords(@NotNull String text, @NotNull Language language) {
-        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_TOKENIZE_TEXT).time();
+        Timer timer = MetricsFactory.getMetrics().getTimer(MetricsType.TEXT_UTILS_TOKENIZE_TEXT.name());
 
         if (StringUtils.isEmpty(text)) {
             timer.stop();
@@ -93,14 +88,14 @@ public class TextUtils {
      * @return True if it normal form of word
      */
     public boolean isNormalWord(@NotNull String word, @NotNull Language language) {
-        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_IS_NORMAL_WORD).time();
+        Timer timer = MetricsFactory.getMetrics().getTimer(MetricsType.TEXT_UTILS_IS_NORMAL_WORD.name());
 
         if (StringUtils.isEmpty(word)) {
             return false;
         }
 
         try {
-            Timer.Context morphTimer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_GET_MORPH_INFO).time();
+            Timer morphTimer = MetricsFactory.getMetrics().getTimer(MetricsType.TEXT_UTILS_GET_MORPH_INFO.name());
             List<String> morphInfo = MorphologyFactory.getMorphology(language).getMorphInfo(word);
             morphTimer.stop();
 
@@ -150,7 +145,7 @@ public class TextUtils {
 
     @NotNull
     private List<String> splitText(@NotNull String text, @NotNull Language language) {
-        Timer.Context timer = metricsFactory.getTimer(MetricsType.TEXT_UTILS_SPLIT).time();
+        Timer timer = MetricsFactory.getMetrics().getTimer(MetricsType.TEXT_UTILS_SPLIT.name());
 
         List<String> tokens = new ArrayList<>();
 
@@ -189,7 +184,7 @@ public class TextUtils {
         return !StringUtils.isEmpty(token);
     }
 
-    private enum MetricsType implements MetricsFactory.Type {
+    private enum MetricsType {
         TEXT_UTILS_TOKENIZE_TEXT,
         TEXT_UTILS_IS_NORMAL_WORD,
         TEXT_UTILS_SPLIT,

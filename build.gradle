@@ -65,9 +65,12 @@ dependencies {
     compile 'org.apache.ignite:ignite-slf4j:1.4.0'
     compile 'org.apache.ignite:ignite-indexing:1.4.0'
 
-    compile 'io.dropwizard.metrics:metrics-core:3.1.2',
-            'io.dropwizard.metrics:metrics-jvm:3.1.2',
-            'io.dropwizard.metrics:metrics-healthchecks:3.1.2'
+
+    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.4'
+    compile 'com.fnklabs:fnklabs-metrics-core:0.1.4'
+
+
+
 }
 
 jar {

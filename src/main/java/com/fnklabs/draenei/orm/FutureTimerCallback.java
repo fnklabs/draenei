@@ -1,6 +1,6 @@
 package com.fnklabs.draenei.orm;
 
-import com.codahale.metrics.Timer;
+import com.fnklabs.metrics.Timer;
 import com.google.common.util.concurrent.FutureCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,9 +12,9 @@ import org.slf4j.LoggerFactory;
  */
 class FutureTimerCallback<Input> implements FutureCallback<Input> {
     private static final Logger LOGGER = LoggerFactory.getLogger(FutureTimerCallback.class);
-    private final Timer.Context timer;
+    private final Timer timer;
 
-    FutureTimerCallback(Timer.Context timer) {
+    FutureTimerCallback(Timer timer) {
         this.timer = timer;
     }
 

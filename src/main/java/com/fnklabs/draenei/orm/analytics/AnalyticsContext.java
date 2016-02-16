@@ -46,12 +46,4 @@ public class AnalyticsContext {
         return ignite;
     }
 
-    @NotNull
-    protected ExecutorService getExecutorService() {
-        ClusterGroup clusterGroup = getIgnite().compute()
-                                               .clusterGroup()
-                                               .forServers();
-
-        return getIgnite().executorService(clusterGroup);
-    }
 }

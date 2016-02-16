@@ -1,11 +1,9 @@
 package com.fnklabs.draenei.analytics.search;
 
 import com.fnklabs.draenei.IgniteTest;
-import com.fnklabs.draenei.MetricsFactoryImpl;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cluster.ClusterGroup;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,7 +11,6 @@ import org.junit.Test;
 import java.net.UnknownHostException;
 import java.security.SecureRandom;
 import java.util.Collection;
-import java.util.List;
 
 public class DraeneiSearchServiceTest {
 
@@ -75,8 +72,5 @@ public class DraeneiSearchServiceTest {
         Assert.assertFalse(searchResults.isEmpty());
     }
 
-    @After
-    public void tearDown() throws Exception {
-        MetricsFactoryImpl.report();
-    }
+
 }

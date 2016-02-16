@@ -1,6 +1,5 @@
 package com.fnklabs.draenei.analytics;
 
-import com.fnklabs.draenei.MetricsFactoryImpl;
 import com.fnklabs.draenei.analytics.morphology.Language;
 import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
@@ -27,7 +26,7 @@ public class TextUtilsTest {
 
     @Test
     public void testGetNormalForms() throws Exception {
-        TextUtils textUtils = new TextUtils(new MetricsFactoryImpl());
+        TextUtils textUtils = new TextUtils();
 
         Set<String> normalForms = textUtils.getNormalForms("язык", Language.RU);
 
@@ -40,7 +39,7 @@ public class TextUtilsTest {
 
     @Test
     public void testExtractWords() throws Exception {
-        TextUtils textUtils = new TextUtils(new MetricsFactoryImpl());
+        TextUtils textUtils = new TextUtils();
 
         List<String> words = textUtils.extractWords(" тест текст текстовый fff аааа 123", Language.RU);
 
@@ -51,7 +50,7 @@ public class TextUtilsTest {
 
     @Test
     public void testIsNormalWord() throws Exception {
-        TextUtils textUtils = new TextUtils(new MetricsFactoryImpl());
+        TextUtils textUtils = new TextUtils();
 
         boolean result = textUtils.isNormalWord("тест", Language.RU);
 

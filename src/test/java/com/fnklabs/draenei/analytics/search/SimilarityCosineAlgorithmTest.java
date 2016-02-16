@@ -1,6 +1,6 @@
 package com.fnklabs.draenei.analytics.search;
 
-import com.fnklabs.draenei.MetricsFactoryImpl;
+
 import com.google.common.collect.Sets;
 import org.junit.Assert;
 import org.junit.Test;
@@ -21,7 +21,7 @@ public class SimilarityCosineAlgorithmTest {
 
     @Test
     public void testGetScalarComposition() throws Exception {
-        SimilarityCosineAlgorithm similarityCosineAlgorithm = new SimilarityCosineAlgorithm(new MetricsFactoryImpl());
+        SimilarityCosineAlgorithm similarityCosineAlgorithm = new SimilarityCosineAlgorithm();
 
         FacetType facetType = new FacetType(FacetType.UNKNOWN, String.class);
 

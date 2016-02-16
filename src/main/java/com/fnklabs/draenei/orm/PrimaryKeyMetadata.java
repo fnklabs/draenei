@@ -70,11 +70,11 @@ class PrimaryKeyMetadata implements ColumnMetadata {
 
     @Override
     public ByteBuffer serialize(Object value) {
-        return null;
+        return columnMetadata.serialize(value);
     }
 
     @Override
     public <T> T deserialize(@Nullable ByteBuffer data) {
-        return null;
+        return columnMetadata.deserialize(data);
     }
 }

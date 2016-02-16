@@ -1,6 +1,6 @@
 package com.fnklabs.draenei.analytics.search;
 
-import com.fnklabs.draenei.MetricsFactoryImpl;
+
 import com.fnklabs.draenei.analytics.TextUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -15,7 +15,7 @@ public class ClusteringTermAlgorithmTest {
 
     @Test
     public void testBuild() throws Exception {
-        TextUtils textUtils = new TextUtils(new MetricsFactoryImpl());
+        TextUtils textUtils = new TextUtils();
 
 
         ClusteringTermAlgorithm algorithm = new ClusteringTermAlgorithm(textUtils);
@@ -52,7 +52,7 @@ public class ClusteringTermAlgorithmTest {
 
     @Test
     public void testBuildCase2() throws Exception {
-        TextUtils textUtils = new TextUtils(new MetricsFactoryImpl());
+        TextUtils textUtils = new TextUtils();
 
 
         ClusteringTermAlgorithm algorithm = new ClusteringTermAlgorithm(textUtils);

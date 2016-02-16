@@ -1,7 +1,7 @@
 package com.fnklabs.draenei.analytics.search;
 
-import com.codahale.metrics.Timer;
-import com.fnklabs.draenei.MetricsFactory;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -9,15 +9,14 @@ import java.util.Optional;
 
 final public class SimilarityCosineAlgorithm implements SimilarityAlgorithm {
 
-    private final MetricsFactory metricsFactory;
 
-    SimilarityCosineAlgorithm(MetricsFactory metricsFactory) {
-        this.metricsFactory = metricsFactory;
+    SimilarityCosineAlgorithm() {
+
     }
 
     @Override
     public <T extends FacetRank, K extends FacetRank> double getSimilarity(@NotNull Collection<T> firstVector, @NotNull Collection<K> secondVector) {
-        Timer.Context time = metricsFactory.getTimer(MetricsType.COSINE_SIMILARITY_GET_SIMILARITY).time();
+        Timer time = MetricsFactory.getMetrics().getTimer(MetricsType.COSINE_SIMILARITY_GET_SIMILARITY.name());
 
         double firstVectorModule = getVectorModule(firstVector);
         double secondVectorModule = getVectorModule(secondVector);
@@ -37,7 +36,7 @@ final public class SimilarityCosineAlgorithm implements SimilarityAlgorithm {
     }
 
     protected <T extends FacetRank, K extends FacetRank> double getVectorModule(@NotNull Collection<T> firstVector) {
-        Timer.Context time = metricsFactory.getTimer(MetricsType.COSINE_SIMILARITY_GET_VECTOR_MODULE).time();
+        Timer time = MetricsFactory.getMetrics().getTimer(MetricsType.COSINE_SIMILARITY_GET_VECTOR_MODULE.name());
 
         double vectorPointSum = firstVector.stream()
                                            .mapToDouble(entry -> Math.pow(entry.getRank(), 2))
@@ -51,7 +50,7 @@ final public class SimilarityCosineAlgorithm implements SimilarityAlgorithm {
     }
 
     protected <T extends FacetRank, K extends FacetRank> double getScalarComposition(@NotNull Collection<T> firstVector, @NotNull Collection<K> secondVector) {
-        Timer.Context time = metricsFactory.getTimer(MetricsType.COSINE_SIMILARITY_GET_SCALAR_COMPOSITION).time();
+        Timer time = MetricsFactory.getMetrics().getTimer(MetricsType.COSINE_SIMILARITY_GET_SCALAR_COMPOSITION.name());
 
         double sum = 0;
 
@@ -84,7 +83,7 @@ final public class SimilarityCosineAlgorithm implements SimilarityAlgorithm {
                            .findFirst();
     }
 
-    private enum MetricsType implements MetricsFactory.Type {
+    private enum MetricsType {
         COSINE_SIMILARITY_GET_VECTOR_MODULE,
         COSINE_SIMILARITY_GET_SCALAR_COMPOSITION,
         COSINE_SIMILARITY_TRANSFORM_MAP,

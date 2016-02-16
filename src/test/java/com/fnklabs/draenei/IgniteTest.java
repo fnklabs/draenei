@@ -171,7 +171,6 @@ public class IgniteTest implements Serializable {
 //            }
 //        });
 
-        MetricsFactoryImpl.report();
 
     }
 
