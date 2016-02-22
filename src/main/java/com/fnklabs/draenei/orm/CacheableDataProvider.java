@@ -38,16 +38,16 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     private final IgniteCache<Long, Entry> cache;
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite, @NotNull ExecutorService executorService) {
-        super(clazz, cassandraClient, executorService);
+    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull Ignite ignite, @NotNull ExecutorService executorService) {
+        super(clazz, cassandraClientFactory, executorService);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
         initializeEventListener(ignite);
     }
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClient, @NotNull Ignite ignite) {
-        super(clazz, cassandraClient);
+    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull Ignite ignite) {
+        super(clazz, cassandraClientFactory);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
@@ -183,10 +183,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public CacheConfiguration<Long, Entry> getCacheConfiguration() {
         return CacheUtils.getDefaultCacheConfiguration(getEntityClass());
 
-    }
-
-    protected IgniteCache<Long, Entry> getCache() {
-        return cache;
     }
 
     @NotNull

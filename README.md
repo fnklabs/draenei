@@ -124,11 +124,9 @@ class User {
 All other fields in Table annotation is optional and not used in current implementation
 
 ## Entity (Complete class)
-
-```java
-
 All field values read and write though getters and setters so you must define them
 
+```java
 @Table(name = "user")
 class User {
     @PrimaryKey

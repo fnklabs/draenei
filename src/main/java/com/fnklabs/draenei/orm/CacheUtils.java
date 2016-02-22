@@ -51,4 +51,22 @@ public class CacheUtils {
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
         return cacheCfg;
     }
+
+    /**
+     * Get default cache configuration for specified entity class
+     *
+     * @return Cache Configuration for specified entity class
+     */
+    public static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName) {
+        CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
+        cacheCfg.setBackups(1);
+        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+        cacheCfg.setOffHeapMaxMemory(0);
+        cacheCfg.setReadThrough(false);
+        cacheCfg.setWriteThrough(false);
+        cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
+        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
+        return cacheCfg;
+    }
 }
