@@ -175,6 +175,39 @@ public class DataProvider<V> {
     }
 
     /**
+     * Save entity asynchronously
+     *
+     * @param entity Target entity
+     *
+     * @return Operation status result
+     */
+    public Boolean save(@NotNull V entity) {
+        Timer saveAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_SAVE.name());
+
+        Insert insert = QueryBuilder.insertInto(getEntityMetadata().getTableName());
+        List<ColumnMetadata> columns = getEntityMetadata().getFieldMetaData();
+        columns.forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
+
+        try {
+            PreparedStatement prepare = getCassandraClient().prepare(insert.getQueryString());
+            prepare.setConsistencyLevel(getWriteConsistencyLevel());
+
+            BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
+
+            ResultSet input = getCassandraClient().execute(boundStatement);
+
+            return input.wasApplied();
+        } catch (SyntaxError e) {
+            LOGGER.warn("Can't prepare query: " + insert.getQueryString(), e);
+
+        } finally {
+            saveAsyncTimer.stop();
+        }
+
+        return false;
+    }
+
+    /**
      * Remove entity asynchronously
      *
      * @param entity Target entity
@@ -447,6 +480,49 @@ public class DataProvider<V> {
         }
     }
 
+    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
+        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
+            @Override
+            public Boolean apply(Input input) {
+                return true;
+            }
+        });
+    }
+
+    /**
+     * Monitor future completion
+     *
+     * @param timer            Timer that will be close on Future success or failure
+     * @param listenableFuture Listenable future
+     * @param userCallback     User callback that will be executed on Future success
+     * @param <Input>          Future class type
+     * @param <Output>         User callback output
+     *
+     * @return Listenable future
+     */
+    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
+        Futures.addCallback(listenableFuture, new FutureTimerCallback<>(timer));
+
+        return Futures.transform(listenableFuture, new JdkFunctionWrapper<>(userCallback));
+    }
+
+    @NotNull
+    protected CassandraClient getCassandraClient() {
+        return cassandraClient.create();
+    }
+
+    /**
+     * Map row result to object
+     *
+     * @param row ResultSet row
+     *
+     * @return Mapped object or null if can't map fields
+     */
+    @Nullable
+    protected V mapToObject(@NotNull Row row) {
+        return mapToObjectFunction.apply(row);
+    }
+
     @NotNull
     private BoundStatement getFetchBoundStatement(List<Object> keys) {
         BoundStatement boundStatement;
@@ -504,32 +580,6 @@ public class DataProvider<V> {
         return boundStatement;
     }
 
-    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
-        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
-            @Override
-            public Boolean apply(Input input) {
-                return true;
-            }
-        });
-    }
-
-    /**
-     * Monitor future completion
-     *
-     * @param timer            Timer that will be close on Future success or failure
-     * @param listenableFuture Listenable future
-     * @param userCallback     User callback that will be executed on Future success
-     * @param <Input>          Future class type
-     * @param <Output>         User callback output
-     *
-     * @return Listenable future
-     */
-    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
-        Futures.addCallback(listenableFuture, new FutureTimerCallback<>(timer));
-
-        return Futures.transform(listenableFuture, new JdkFunctionWrapper<>(userCallback));
-    }
-
     private ConsistencyLevel getReadConsistencyLevel() {
         return getEntityMetadata().getReadConsistencyLevel();
     }
@@ -541,23 +591,6 @@ public class DataProvider<V> {
     @NotNull
     private EntityMetadata getEntityMetadata() {
         return entityMetadata;
-    }
-
-    /**
-     * Map row result to object
-     *
-     * @param row ResultSet row
-     *
-     * @return Mapped object or null if can't map fields
-     */
-    @Nullable
-    private V mapToObject(@NotNull Row row) {
-        return mapToObjectFunction.apply(row);
-    }
-
-    @NotNull
-    private CassandraClient getCassandraClient() {
-        return cassandraClient.create();
     }
 
     @NotNull

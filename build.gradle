@@ -61,13 +61,13 @@ dependencies {
     compile 'org.apache.lucene.morphology:russian:1.1'
     compile 'org.apache.lucene.morphology:english:1.1'
 
-    compile 'org.apache.ignite:ignite-core:1.4.0'
-    compile 'org.apache.ignite:ignite-slf4j:1.4.0'
-    compile 'org.apache.ignite:ignite-indexing:1.4.0'
+    compile 'org.apache.ignite:ignite-core:1.5.0.final'
+    compile 'org.apache.ignite:ignite-slf4j:1.5.0.final'
+    compile 'org.apache.ignite:ignite-indexing:1.5.0.final'
 
 
-    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.4'
-    compile 'com.fnklabs:fnklabs-metrics-core:0.1.4'
+    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.5'
+    compile 'com.fnklabs:fnklabs-metrics-core:0.1.5'
 
 
 

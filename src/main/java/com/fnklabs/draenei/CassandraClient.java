@@ -66,7 +66,8 @@ public class CassandraClient {
                                          .withLoadBalancingPolicy(getLoadBalancingPolicy(hostDistance))
                                          .withReconnectionPolicy(new ConstantReconnectionPolicy(RECONNECTION_DELAY_TIME))
                                          .withPoolingOptions(getPoolingOptions())
-                                         .withSocketOptions(getSocketOptions());
+                                         .withSocketOptions(getSocketOptions())
+                                         .withTimestampGenerator(new AtomicMonotonicTimestampGenerator());
 
         if (!StringUtils.isEmpty(username) && !StringUtils.isEmpty(password)) {
             builder = builder.withCredentials(username, password);

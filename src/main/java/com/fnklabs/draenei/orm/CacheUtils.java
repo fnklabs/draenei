@@ -12,6 +12,8 @@ import org.jetbrains.annotations.NotNull;
  * Cache utils
  */
 public class CacheUtils {
+    private static final long OFF_HEAP_MAX_MEM = 5 * 1024L * 1024L * 1024L;
+
     /**
      * Return cache name for specified entity class
      *
@@ -49,6 +51,9 @@ public class CacheUtils {
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
+        cacheCfg.setSwapEnabled(true);
+        cacheCfg.setOffHeapMaxMemory(OFF_HEAP_MAX_MEM);
+
         return cacheCfg;
     }
 
@@ -67,6 +72,8 @@ public class CacheUtils {
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
+        cacheCfg.setSwapEnabled(true);
+        cacheCfg.setOffHeapMaxMemory(OFF_HEAP_MAX_MEM);
         return cacheCfg;
     }
 }
