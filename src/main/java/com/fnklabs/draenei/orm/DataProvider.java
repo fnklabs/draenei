@@ -44,6 +44,7 @@ public class DataProvider<V> {
      * Map for saving DataProviders by DataProvider class
      */
     private static final Map<Class, DataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
+
     @NotNull
     private static final com.fnklabs.metrics.Metrics METRICS = MetricsFactory.getMetrics();
     /**

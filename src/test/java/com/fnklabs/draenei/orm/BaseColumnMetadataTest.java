@@ -3,6 +3,7 @@ package com.fnklabs.draenei.orm;
 import com.datastax.driver.core.TableMetadata;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Matchers;
 import org.mockito.Mockito;
 
 import java.beans.BeanInfo;
@@ -23,7 +24,10 @@ public class BaseColumnMetadataTest {
                 continue;
             }
 
-            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+            TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
+            Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
+
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
 
             Assert.assertEquals("id", columnMetadata.getName());
         }
@@ -40,7 +44,10 @@ public class BaseColumnMetadataTest {
                 continue;
             }
 
-            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+            TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
+            Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
+
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
 
             Assert.assertNotNull(columnMetadata);
 
@@ -68,7 +75,10 @@ public class BaseColumnMetadataTest {
                 continue;
             }
 
-            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(TableMetadata.class));
+            TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
+            Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
+
+            ColumnMetadata columnMetadata = ColumnMetadataBuilder.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
 
             Assert.assertNotNull(columnMetadata);
 

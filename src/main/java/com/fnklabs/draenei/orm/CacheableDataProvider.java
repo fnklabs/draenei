@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -35,10 +37,16 @@ import java.util.concurrent.ExecutorService;
 public class CacheableDataProvider<Entry extends Serializable> extends DataProvider<Entry> {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
-
+    /**
+     * Map for saving DataProviders by DataProvider class
+     */
+    private static final Map<Class, CacheableDataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
     private final IgniteCache<Long, Entry> cache;
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull Ignite ignite, @NotNull ExecutorService executorService) {
+    public CacheableDataProvider(@NotNull Class<Entry> clazz,
+                                 @NotNull CassandraClientFactory cassandraClientFactory,
+                                 @NotNull Ignite ignite,
+                                 @NotNull ExecutorService executorService) {
         super(clazz, cassandraClientFactory, executorService);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
@@ -52,6 +60,24 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
         initializeEventListener(ignite);
+    }
+
+    /**
+     * Get DataProvider service
+     *
+     * @param clazz                  DataProvider class
+     * @param cassandraClientFactory CassandraClientFactory instance
+     * @param <T>                    DataProvider class type
+     *
+     * @return DataProvider instance
+     */
+    public static <T> CacheableDataProvider getCacheableDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory, Ignite ignite) {
+        return DATA_PROVIDERS_REGISTRY.compute(clazz, (dataProviderClass, dataProvider) -> {
+            if (dataProvider == null) {
+                return new CacheableDataProvider(clazz, cassandraClientFactory, ignite);
+            }
+            return dataProvider;
+        });
     }
 
     @Override

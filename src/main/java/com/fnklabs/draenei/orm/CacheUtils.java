@@ -46,7 +46,6 @@ public class CacheUtils {
         cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
-        cacheCfg.setOffHeapMaxMemory(0);
         cacheCfg.setReadThrough(false);
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
@@ -67,7 +66,6 @@ public class CacheUtils {
         cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
-        cacheCfg.setOffHeapMaxMemory(0);
         cacheCfg.setReadThrough(false);
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);

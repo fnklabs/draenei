@@ -69,6 +69,10 @@ class BaseColumnMetadata implements ColumnMetadata {
             throw new MetadataException(String.format("Can't retrieve write method for %s#%s", entityClassType.getName(), propertyDescriptor.getName()));
         }
 
+        if (columnMetadata == null) {
+            throw new MetadataException(String.format("Column metadata[%s] is null", name));
+        }
+
         this.readMethod = propertyDescriptor.getReadMethod();
         this.writeMethod = propertyDescriptor.getWriteMethod();
         this.columnMetadata = columnMetadata;
@@ -120,7 +124,7 @@ class BaseColumnMetadata implements ColumnMetadata {
         try {
             return (FieldType) readMethod.invoke(object);
         } catch (IllegalAccessException | InvocationTargetException | ClassCastException e) {
-            LOGGER.warn("Can't invoke read method", e);
+            LOGGER.warn("Can't invoke read method: " + readMethod.getName(), e);
         }
 
         return null;
