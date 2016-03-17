@@ -39,17 +39,17 @@ public class AnalyticsUtils {
         Collection<Range<Long>> ranges = CassandraUtils.splitRing(cassandraClient);
 
         List<BootDataTask<ValueIn>> calls = ranges.stream()
-                                                      .map(range -> {
-                                                          BootDataTask<ValueIn> serializableSeekOverDataTask = new BootDataTask<>(
-                                                                  range.lowerEndpoint(),
-                                                                  range.upperEndpoint(),
-                                                                  dataProvider.getEntityClass(),
-                                                                  analyticsContext.getCassandraClientFactory()
-                                                          );
+                                                  .map(range -> {
+                                                      BootDataTask<ValueIn> serializableSeekOverDataTask = new BootDataTask<>(
+                                                              range.lowerEndpoint(),
+                                                              range.upperEndpoint(),
+                                                              dataProvider.getEntityClass(),
+                                                              analyticsContext.getCassandraClientFactory()
+                                                      );
 
-                                                          return serializableSeekOverDataTask;
-                                                      })
-                                                      .collect(Collectors.toList());
+                                                      return serializableSeekOverDataTask;
+                                                  })
+                                                  .collect(Collectors.toList());
 
         ClusterGroup clusterGroup = analyticsContext.getIgnite()
                                                     .cluster()
@@ -75,6 +75,7 @@ public class AnalyticsUtils {
      * @return Future for operation complete with number of loaded elements
      */
     @NotNull
+    @Deprecated
     public static <ValueIn extends Serializable, UserCallback extends Consumer<ValueIn> & Serializable> Integer map(@NotNull AnalyticsContext analyticsContext,
                                                                                                                     @NotNull DataProvider<ValueIn> dataProvider,
                                                                                                                     @NotNull UserCallback mapConsumer) {

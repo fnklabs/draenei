@@ -8,10 +8,13 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 
+import javax.cache.configuration.Factory;
+import javax.cache.integration.CacheWriter;
+
 /**
  * Cache utils
  */
-public class CacheUtils {
+class CacheUtils {
     private static final long OFF_HEAP_MAX_MEM = 5 * 1024L * 1024L * 1024L;
 
     /**
@@ -25,14 +28,6 @@ public class CacheUtils {
         return StringUtils.lowerCase(clazz.getName());
     }
 
-    public static <Entry> CacheConfiguration<Long, Entry> getCacheConfiguration(@NotNull DataProvider<Entry> dataProvider) {
-        if (dataProvider instanceof CacheableDataProvider) {
-            return ((CacheableDataProvider) dataProvider).getCacheConfiguration();
-        }
-
-        return CacheUtils.getDefaultCacheConfiguration(dataProvider.getEntityClass());
-    }
-
     /**
      * Get default cache configuration for specified entity class
      *
@@ -41,19 +36,8 @@ public class CacheUtils {
      *
      * @return Cache Configuration for specified entity class
      */
-    public static <Entry> CacheConfiguration<Long, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass) {
-        CacheConfiguration<Long, Entry> cacheCfg = new CacheConfiguration<>(getCacheName(entityClass));
-        cacheCfg.setBackups(1);
-        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
-        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
-        cacheCfg.setReadThrough(false);
-        cacheCfg.setWriteThrough(false);
-        cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
-        cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(OFF_HEAP_MAX_MEM);
-
-        return cacheCfg;
+    public static <Entry> CacheConfiguration<Long, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass, Factory<CacheWriter<Long, Entry>> cacheWriterFactory) {
+        return getDefaultCacheConfiguration(getCacheName(entityClass), cacheWriterFactory);
     }
 
     /**
@@ -61,15 +45,16 @@ public class CacheUtils {
      *
      * @return Cache Configuration for specified entity class
      */
-    public static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName) {
+    public static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName, Factory<CacheWriter<Key, Entry>> cacheWriterFactory) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
         cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setReadThrough(false);
-        cacheCfg.setWriteThrough(false);
+        cacheCfg.setWriteThrough(true);
+        cacheCfg.setCacheWriterFactory(cacheWriterFactory);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10000));
+        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(100000));
         cacheCfg.setSwapEnabled(true);
         cacheCfg.setOffHeapMaxMemory(OFF_HEAP_MAX_MEM);
         return cacheCfg;
