@@ -68,9 +68,6 @@ dependencies {
 
     compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.5'
     compile 'com.fnklabs:fnklabs-metrics-core:0.1.5'
-
-
-
 }
 
 jar {

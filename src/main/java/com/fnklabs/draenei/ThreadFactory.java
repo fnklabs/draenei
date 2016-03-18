@@ -4,12 +4,12 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class ThreadFactory implements java.util.concurrent.ThreadFactory {
+class ThreadFactory implements java.util.concurrent.ThreadFactory {
     private final ThreadGroup group;
     private final AtomicInteger threadNumber = new AtomicInteger(1);
     private final String namePrefix;
 
-    public ThreadFactory(@NotNull String name) {
+    ThreadFactory(@NotNull String name) {
         SecurityManager s = System.getSecurityManager();
         group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
         this.namePrefix = name + "-";

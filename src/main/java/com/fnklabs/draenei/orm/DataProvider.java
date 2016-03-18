@@ -157,7 +157,7 @@ public class DataProvider<V> {
         ListenableFuture<Boolean> resultFuture;
 
         try {
-            PreparedStatement prepare = getCassandraClient().prepare(insert.getQueryString());
+            PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), insert.getQueryString());
             prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
             BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
@@ -190,7 +190,7 @@ public class DataProvider<V> {
         columns.forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
 
         try {
-            PreparedStatement prepare = getCassandraClient().prepare(insert.getQueryString());
+            PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), insert.getQueryString());
             prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
             BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
@@ -244,7 +244,7 @@ public class DataProvider<V> {
 
         assert where != null;
 
-        PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+        PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
         prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
         BoundStatement boundStatement = new BoundStatement(prepare);
@@ -377,7 +377,7 @@ public class DataProvider<V> {
             where = where.and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
         }
 
-        PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+        PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
         prepare.setConsistencyLevel(getReadConsistencyLevel());
 
         BoundStatement boundStatement = new BoundStatement(prepare);
@@ -562,7 +562,7 @@ public class DataProvider<V> {
 
             assert where != null;
 
-            PreparedStatement prepare = getCassandraClient().prepare(where.getQueryString());
+            PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
             prepare.setConsistencyLevel(getReadConsistencyLevel());
 
             boundStatement = new BoundStatement(prepare);
@@ -570,7 +570,7 @@ public class DataProvider<V> {
             bindPrimaryKeysParameters(keys, boundStatement);
 
         } else {
-            PreparedStatement statement = getCassandraClient().prepare(select.getQueryString());
+            PreparedStatement statement = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), select.getQueryString());
             statement.setConsistencyLevel(getReadConsistencyLevel());
 
             boundStatement = new BoundStatement(statement);

@@ -8,13 +8,13 @@ import javax.cache.integration.CacheWriter;
 import javax.cache.integration.CacheWriterException;
 import java.util.Collection;
 
-public class DataProviderCacheWriter<Entry> implements CacheWriter<Long, Entry> {
+class DataProviderCacheWriter<Entry> implements CacheWriter<Long, Entry> {
     private static final Logger LOGGER = LoggerFactory.getLogger(DataProvider.class);
     private final CassandraClientFactory cassandraClientFactory;
     private final Class<Entry> entityClass;
     private final DataProvider<Entry> dataProvider;
 
-    public DataProviderCacheWriter(CassandraClientFactory cassandraClientFactory, Class<Entry> entityClass) {
+    DataProviderCacheWriter(CassandraClientFactory cassandraClientFactory, Class<Entry> entityClass) {
         this.cassandraClientFactory = cassandraClientFactory;
         this.entityClass = entityClass;
         dataProvider = DataProvider.getDataProvider(entityClass, cassandraClientFactory);

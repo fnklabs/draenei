@@ -30,18 +30,18 @@ class PrimaryKeyMetadata implements ColumnMetadata {
      * @param order          Primary key order (from 0 to n) 0 means first
      * @param isPartitionKey Flag that can determine if current key is belong to partition keys
      */
-    protected PrimaryKeyMetadata(ColumnMetadata columnMetadata, int order, boolean isPartitionKey) {
+    PrimaryKeyMetadata(ColumnMetadata columnMetadata, int order, boolean isPartitionKey) {
         this.columnMetadata = columnMetadata;
 
         this.order = order;
         this.isPartitionKey = isPartitionKey;
     }
 
-    public int getOrder() {
+    int getOrder() {
         return order;
     }
 
-    public boolean isPartitionKey() {
+    boolean isPartitionKey() {
         return isPartitionKey;
     }
 

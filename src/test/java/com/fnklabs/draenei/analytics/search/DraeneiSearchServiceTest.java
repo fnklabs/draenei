@@ -14,7 +14,7 @@ import java.util.Collection;
 
 public class DraeneiSearchServiceTest {
 
-    private static final int MAX_DOCUMENTS = 40000;
+    private static final int MAX_DOCUMENTS = 1000;
     private static final String[] WORDS = {
             "принимая", "внимание", "искусственность", "границ", "элементарной", "почвы", "и", "произвольность", "ее", "положения", "в", "пространстве", "почвенного", "покрова,",
             "банкротство", "практически", "индуцирует", "модальный", "апогей.", "модальное", "письмо", "может", "быть", "реализовано", "на", "основе", "принципов", "центропостоянности",

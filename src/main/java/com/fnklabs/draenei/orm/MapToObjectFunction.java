@@ -4,6 +4,7 @@ import com.datastax.driver.core.Row;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.function.Function;
 
@@ -35,7 +36,9 @@ class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
             for (ColumnMetadata column : columns) {
                 if (row.getColumnDefinitions().contains(column.getName())) {
 
-                    Object deserializedValue = column.deserialize(row.getBytesUnsafe(column.getName()));
+                    ByteBuffer data = row.getBytesUnsafe(column.getName());
+
+                    Object deserializedValue = column.deserialize(data);
 
                     column.writeValue(instance, deserializedValue);
                 }
