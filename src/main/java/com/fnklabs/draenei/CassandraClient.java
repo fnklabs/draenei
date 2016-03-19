@@ -6,6 +6,7 @@ import com.fnklabs.metrics.Metrics;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
 import com.google.common.base.Objects;
+import com.google.common.base.Verify;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -19,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class CassandraClient {
@@ -128,12 +129,16 @@ public class CassandraClient {
 
     @NotNull
     public TableMetadata getTableMetadata(@NotNull String keyspace, @NotNull String tablename) {
-        return getKeyspaceMetadata(keyspace).getTable(tablename);
+        TableMetadata tableMetadata = getKeyspaceMetadata(keyspace).getTable(tablename);
+
+        Verify.verifyNotNull(tableMetadata, String.format("Table metadata is null %s", tablename));
+
+        return tableMetadata;
     }
 
     @NotNull
     public PreparedStatement prepare(@NotNull String keyspace, @NotNull String query) {
-        return preparedStatementsMap.compute(new SessionQuery(keyspace, query), new ComputePreparedStatement());
+        return preparedStatementsMap.computeIfAbsent(new SessionQuery(keyspace, query), new ComputePreparedStatement());
     }
 
     /**
@@ -329,12 +334,20 @@ public class CassandraClient {
      * @return Session instance
      */
     private Session getOrCreateSession(@NotNull String keyspace) {
-        return sessionsByKeyspace.computeIfAbsent(keyspace, key -> {
+        Timer timer = getMetricsFactory().getTimer("cassandraClient.getOrCreateSession");
+
+        Session currentSession = sessionsByKeyspace.computeIfAbsent(keyspace, key -> {
+            LOGGER.debug("Create session for [{}]", keyspace);
+
             Session session = getCluster().connect(key);
             session.init();
 
             return session;
         });
+
+        timer.stop();
+
+        return currentSession;
     }
 
     private enum MetricsType {
@@ -399,24 +412,25 @@ public class CassandraClient {
         }
     }
 
-    private class ComputePreparedStatement implements BiFunction<SessionQuery, PreparedStatement, PreparedStatement> {
+    private class ComputePreparedStatement implements Function<SessionQuery, PreparedStatement> {
+
 
         @Override
-        public PreparedStatement apply(SessionQuery query, PreparedStatement preparedStatement) {
-            if (preparedStatement == null) {
-                Timer timer = getMetricsFactory().getTimer(MetricsType.CASSANDRA_PREPARE_STMT.name());
-                try {
-                    preparedStatement = getOrCreateSession(query.getKeyspace()).prepare(query.getQuery());
-                } catch (Exception e) {
-                    LOGGER.error("Cant prepare query: " + query, e);
-                    throw e;
-                }
+        public PreparedStatement apply(SessionQuery sessionQuery) {
+
+            Timer timer = getMetricsFactory().getTimer(MetricsType.CASSANDRA_PREPARE_STMT.name());
+
+            try {
+                return getOrCreateSession(sessionQuery.getKeyspace()).prepare(sessionQuery.getQuery());
+            } catch (Exception e) {
+                LOGGER.error("Cant prepare query: " + sessionQuery.getQuery(), e);
+                throw e;
+            } finally {
                 timer.stop();
             }
-
-            return preparedStatement;
         }
     }
+
 
     private class StatementExecutionCallback implements FutureCallback<ResultSet> {
         private final String keyspace;

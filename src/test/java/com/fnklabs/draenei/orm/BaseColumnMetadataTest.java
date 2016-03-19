@@ -1,6 +1,7 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.TableMetadata;
+import com.fnklabs.draenei.CassandraClient;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Matchers;
@@ -27,7 +28,7 @@ public class BaseColumnMetadataTest {
             TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
             Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
 
-            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
+            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(CassandraClient.class), tableMetadata);
 
             Assert.assertEquals("id", columnMetadata.getName());
         }
@@ -47,7 +48,7 @@ public class BaseColumnMetadataTest {
             TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
             Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
 
-            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
+            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class,Mockito.mock(CassandraClient.class), tableMetadata);
 
             Assert.assertNotNull(columnMetadata);
 
@@ -78,7 +79,7 @@ public class BaseColumnMetadataTest {
             TableMetadata tableMetadata = Mockito.mock(TableMetadata.class);
             Mockito.when(tableMetadata.getColumn(Matchers.anyString())).thenReturn(Mockito.mock(com.datastax.driver.core.ColumnMetadata.class));
 
-            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, tableMetadata);
+            ColumnMetadata columnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, TestEntity.class, Mockito.mock(CassandraClient.class), tableMetadata);
 
             Assert.assertNotNull(columnMetadata);
 

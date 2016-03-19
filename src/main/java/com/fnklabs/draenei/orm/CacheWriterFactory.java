@@ -1,11 +1,24 @@
 package com.fnklabs.draenei.orm;
 
-import javax.cache.configuration.FactoryBuilder;
+import org.slf4j.LoggerFactory;
+
+import javax.cache.configuration.Factory;
 import javax.cache.integration.CacheWriter;
 
-class CacheWriterFactory<Entry> extends FactoryBuilder.SingletonFactory<CacheWriter<Long, Entry>> {
+class CacheWriterFactory<Entry> implements Factory<CacheWriter<Long, Entry>> {
+
+    private final CassandraClientFactory cassandraClientFactory;
+    private final Class<Entry> entityClass;
 
     CacheWriterFactory(CassandraClientFactory cassandraClientFactory, Class<Entry> entityClass) {
-        super(new DataProviderCacheWriter<>(cassandraClientFactory, entityClass));
+        this.cassandraClientFactory = cassandraClientFactory;
+        this.entityClass = entityClass;
+    }
+
+    @Override
+    public synchronized CacheWriter<Long, Entry> create() {
+        LoggerFactory.getLogger(getClass()).debug("Create Cache writer");
+
+        return new DataProviderCacheWriter<>(cassandraClientFactory, entityClass);
     }
 }

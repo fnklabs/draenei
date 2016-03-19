@@ -1,6 +1,7 @@
 package com.fnklabs.draenei.orm;
 
 
+import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.ProtocolVersion;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.google.common.base.MoreObjects;
@@ -45,21 +46,20 @@ class BaseColumnMetadata implements ColumnMetadata {
     /**
      * DataStax column metadata to serialize and deserialize data
      */
-    private final com.datastax.driver.core.ColumnMetadata columnMetadata;
-
+    private final DataType columnDataType;
 
     /**
      * @param propertyDescriptor Field property descriptor
      * @param entityClassType    Entity class types used for log
      * @param type               Column java class type
      * @param name               Column name
-     * @param columnMetadata     datastax driver ColumnMetadata
+     * @param columnDataType     Column DataType
      */
-    protected BaseColumnMetadata(PropertyDescriptor propertyDescriptor,
-                                 Class entityClassType,
-                                 Class type,
-                                 String name,
-                                 com.datastax.driver.core.ColumnMetadata columnMetadata) {
+    BaseColumnMetadata(PropertyDescriptor propertyDescriptor,
+                       Class entityClassType,
+                       Class type,
+                       String name,
+                       DataType columnDataType) {
 
         if (propertyDescriptor.getReadMethod() == null) {
             throw new MetadataException(String.format("Can't retrieve read method for %s#%s", entityClassType.getName(), propertyDescriptor.getName()));
@@ -69,13 +69,13 @@ class BaseColumnMetadata implements ColumnMetadata {
             throw new MetadataException(String.format("Can't retrieve write method for %s#%s", entityClassType.getName(), propertyDescriptor.getName()));
         }
 
-        if (columnMetadata == null) {
+        if (columnDataType == null) {
             throw new MetadataException(String.format("Column metadata[%s] is null", name));
         }
 
         this.readMethod = propertyDescriptor.getReadMethod();
         this.writeMethod = propertyDescriptor.getWriteMethod();
-        this.columnMetadata = columnMetadata;
+        this.columnDataType = columnDataType;
         this.type = type;
         this.name = name;
     }
@@ -108,8 +108,8 @@ class BaseColumnMetadata implements ColumnMetadata {
 
         try {
             writeMethod.invoke(entity, value);
-        } catch (InvocationTargetException | IllegalAccessException e) {
-            LOGGER.warn("Can't invoker write method", e);
+        } catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException e) {
+            LOGGER.warn(String.format("Can't invoke write method [%s.%s]", writeMethod.getDeclaringClass(), writeMethod.getName()), e);
         }
     }
 
@@ -139,7 +139,7 @@ class BaseColumnMetadata implements ColumnMetadata {
             return null;
         }
 
-        return columnMetadata.getType().serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
+        return columnDataType.serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
     }
 
     /**
@@ -157,7 +157,7 @@ class BaseColumnMetadata implements ColumnMetadata {
             return null;
         }
 
-        Object deserializedObject = columnMetadata.getType().deserialize(data, ProtocolVersion.NEWEST_SUPPORTED);
+        Object deserializedObject = columnDataType.deserialize(data, ProtocolVersion.NEWEST_SUPPORTED);
 
         return (T) deserializedObject;
     }

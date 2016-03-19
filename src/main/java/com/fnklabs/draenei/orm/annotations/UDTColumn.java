@@ -8,8 +8,6 @@ import java.lang.annotation.Target;
 @Target(value = {ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface UDTColumn {
-    String name();
-
     /**
      * Provide Udt class type if current column type is UDT
      *

@@ -107,38 +107,6 @@ public class DataProvider<V> {
     }
 
     /**
-     * Build hash code for entity
-     *
-     * @param entity Input entity
-     *
-     * @return Cache key
-     */
-    public long buildHashCode(@NotNull V entity) {
-        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
-
-        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
-
-        List<Object> keys = new ArrayList<>();
-
-        for (int i = 0; i < primaryKeysSize; i++) {
-            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
-
-            if (primaryKey.isPresent()) {
-                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
-
-                Object value = primaryKeyMetadata.readValue(entity);
-                keys.add(value);
-            }
-        }
-
-        long hashCode = buildHashCode(keys);
-
-        timer.stop();
-
-        return hashCode;
-    }
-
-    /**
      * Save entity asynchronously
      *
      * @param entity Target entity
@@ -190,12 +158,14 @@ public class DataProvider<V> {
         columns.forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
 
         try {
-            PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), insert.getQueryString());
+            String keyspace = getEntityMetadata().getKeyspace();
+
+            PreparedStatement prepare = getCassandraClient().prepare(keyspace, insert.getQueryString());
             prepare.setConsistencyLevel(getWriteConsistencyLevel());
 
             BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
 
-            ResultSet input = getCassandraClient().execute(boundStatement);
+            ResultSet input = getCassandraClient().execute(keyspace, boundStatement);
 
             return input.wasApplied();
         } catch (SyntaxError e) {
@@ -409,6 +379,44 @@ public class DataProvider<V> {
 
     public Class<V> getEntityClass() {
         return clazz;
+    }
+
+    /**
+     * Build hash code for entity
+     *
+     * @param entity Input entity
+     *
+     * @return Cache key
+     */
+    protected long buildHashCode(@NotNull V entity) {
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
+
+        List<Object> keys = getPrimaryKeys(entity);
+
+        long hashCode = buildHashCode(keys);
+
+        timer.stop();
+
+        return hashCode;
+    }
+
+    @NotNull
+    protected List<Object> getPrimaryKeys(@NotNull V entity) {
+        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
+
+        List<Object> keys = new ArrayList<>();
+
+        for (int i = 0; i < primaryKeysSize; i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (primaryKey.isPresent()) {
+                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+                Object value = primaryKeyMetadata.readValue(entity);
+                keys.add(value);
+            }
+        }
+        return keys;
     }
 
     /**

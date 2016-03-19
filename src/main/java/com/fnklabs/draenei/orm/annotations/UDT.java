@@ -13,5 +13,5 @@ import java.lang.annotation.Target;
 public @interface UDT {
     String keyspace() default "";
 
-    String name() default "";
+    String name();
 }

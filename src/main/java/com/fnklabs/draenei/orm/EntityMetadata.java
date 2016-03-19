@@ -1,6 +1,7 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.ConsistencyLevel;
+import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.UserType;
 import com.fnklabs.draenei.CassandraClient;
@@ -213,7 +214,7 @@ class EntityMetadata {
 
             for (PropertyDescriptor propertyDescriptor : beanInfo.getPropertyDescriptors()) {
 
-                ColumnMetadata columnMetadata = buildColumnMetadata(propertyDescriptor, clazz, tableMetadata);
+                ColumnMetadata columnMetadata = buildColumnMetadata(propertyDescriptor, clazz, cassandraClient, tableMetadata);
 
                 if (columnMetadata != null) {
                     entityMetadata.addColumnMetadata(columnMetadata);
@@ -230,6 +231,45 @@ class EntityMetadata {
         return entityMetadata;
     }
 
+    static ColumnMetadata buildUdtColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Class udtClassType, @NotNull UserType udtType) {
+        try {
+            Field field = udtClassType.getDeclaredField(propertyDescriptor.getName());
+
+            if (field.isAnnotationPresent(Column.class)) {
+
+                Column columnAnnotation = field.getDeclaredAnnotation(Column.class);
+
+                String columnName = getColumnName(propertyDescriptor, columnAnnotation);
+
+                try {
+                    DataType fieldType = udtType.getFieldType(columnName);
+
+                    ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, udtClassType, udtClassType, columnName, fieldType);
+
+                    if (field.isAnnotationPresent(Enumerated.class)) {
+                        Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
+
+                        columnMetadata = new EnumeratedMetadata(columnMetadata, enumeratedAnnotation.enumType());
+                    }
+
+
+                    return columnMetadata;
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn(String.format("Can't get dataType field '%s' for UDT: '%s'", columnName, udtClassType.getName()), e);
+
+                    throw new MetadataException(e);
+                }
+
+            }
+        } catch (NoSuchFieldException e) {
+            if (!StringUtils.equals("class", propertyDescriptor.getDisplayName())) {
+                LOGGER.warn("Can't get field", e);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Build column metadata from field
      *
@@ -239,7 +279,10 @@ class EntityMetadata {
      * @return Column metadata or null if property is not column
      */
     @Nullable
-    static ColumnMetadata buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Class clazz, @NotNull TableMetadata tableMetadata) {
+    static ColumnMetadata buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor,
+                                              @NotNull Class clazz,
+                                              @NotNull CassandraClient cassandraClient,
+                                              @NotNull TableMetadata tableMetadata) {
 
         try {
             Field field = clazz.getDeclaredField(propertyDescriptor.getName());
@@ -250,7 +293,7 @@ class EntityMetadata {
 
                 String columnName = getColumnName(propertyDescriptor, columnAnnotation);
 
-                ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, clazz, field.getType(), columnName, tableMetadata.getColumn(columnName));
+                ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, clazz, field.getType(), columnName, tableMetadata.getColumn(columnName).getType());
 
                 if (field.isAnnotationPresent(Enumerated.class)) {
                     Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
@@ -260,11 +303,22 @@ class EntityMetadata {
                 if (field.isAnnotationPresent(UDTColumn.class)) {
                     UDTColumn udtColumnAnnotation = field.getDeclaredAnnotation(UDTColumn.class);
 
-                    UserType userType = tableMetadata.getKeyspace().getUserType(udtColumnAnnotation.name());
+                    Class udtClassType = udtColumnAnnotation.udtType();
 
-                    Verify.verifyNotNull(userType);
+                    if (udtClassType.isAnnotationPresent(UDT.class)) {
+                        UDT declaredAnnotation = (UDT) udtClassType.getDeclaredAnnotation(UDT.class);
 
-                    columnMetadata = new UserDataTypeMetadata(columnMetadata, tableMetadata, udtColumnAnnotation.udtType(), userType);
+                        String keyspace = StringUtils.isEmpty(declaredAnnotation.keyspace()) ? cassandraClient.getDefaultKeyspace() : declaredAnnotation.keyspace();
+
+                        UserType userType = cassandraClient.getKeyspaceMetadata(keyspace)
+                                                           .getUserType(declaredAnnotation.name());
+
+                        Verify.verifyNotNull(userType);
+
+                        columnMetadata = new UserDataTypeMetadata(udtColumnAnnotation.udtType(), userType, columnMetadata);
+                    }
+
+
                 }
 
                 if (field.isAnnotationPresent(PrimaryKey.class)) {
@@ -276,7 +330,9 @@ class EntityMetadata {
                 return columnMetadata;
             }
         } catch (NoSuchFieldException e) {
-            LOGGER.warn("Can't get field", e);
+            if (!StringUtils.equals("class", propertyDescriptor.getDisplayName())) {
+                LOGGER.warn("Can't get field", e);
+            }
         }
 
         return null;

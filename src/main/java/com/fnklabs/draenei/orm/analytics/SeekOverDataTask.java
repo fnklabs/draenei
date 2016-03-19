@@ -27,11 +27,10 @@ class SeekOverDataTask<T extends Serializable, ResultConsumer extends Consumer<T
     private final CassandraClientFactory cassandraClientFactory;
     private final ResultConsumer resultConsumer;
 
-
     @IgniteInstanceResource
     private transient Ignite ignite;
 
-    public SeekOverDataTask(long startToken, long endToken, Class<T> entityClass, CassandraClientFactory cassandraClientFactory, ResultConsumer resultConsumer) {
+    SeekOverDataTask(long startToken, long endToken, Class<T> entityClass, CassandraClientFactory cassandraClientFactory, ResultConsumer resultConsumer) {
         this.startToken = startToken;
         this.endToken = endToken;
         this.entityClass = entityClass;

@@ -1,9 +1,9 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.ProtocolVersion;
-import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.UDTValue;
 import com.datastax.driver.core.UserType;
+import com.fnklabs.draenei.orm.exception.MetadataException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -31,7 +31,9 @@ class UserDataTypeMetadata implements ColumnMetadata {
 
     private Map<String, ColumnMetadata> udtColumnsMetadata = new HashMap<>();
 
-    UserDataTypeMetadata(@NotNull ColumnMetadata columnMetadata, @NotNull TableMetadata tableMetadata, @NotNull Class udtClassType, @NotNull UserType udtType) {
+    UserDataTypeMetadata(@NotNull Class udtClassType,
+                         @NotNull UserType udtType,
+                         @NotNull ColumnMetadata columnMetadata) {
         this.columnMetadata = columnMetadata;
         this.udtClassType = udtClassType;
         this.udtType = udtType;
@@ -41,7 +43,7 @@ class UserDataTypeMetadata implements ColumnMetadata {
 
             for (PropertyDescriptor propertyDescriptor : beanInfo.getPropertyDescriptors()) {
 
-                ColumnMetadata udtColumnMetadata = EntityMetadata.buildColumnMetadata(propertyDescriptor, udtClassType, tableMetadata);
+                ColumnMetadata udtColumnMetadata = EntityMetadata.buildUdtColumnMetadata(propertyDescriptor, udtClassType, udtType);
 
                 if (udtColumnMetadata != null) {
                     udtColumnsMetadata.put(udtColumnMetadata.getName(), udtColumnMetadata);
@@ -88,7 +90,7 @@ class UserDataTypeMetadata implements ColumnMetadata {
                                                                           return Stream.<UDTValue>empty();
                                                                       }
 
-                                                                      return Stream.<UDTValue>of(mapToUdt(value));
+                                                                      return Stream.<UDTValue>of(mapToUdt(item));
                                                                   });
 
             if (value instanceof Set) {
@@ -124,9 +126,16 @@ class UserDataTypeMetadata implements ColumnMetadata {
             } else if (deserializedValue instanceof List) {
                 return (T) objectStream.collect(Collectors.toList());
             }
-        }
+        } else if (deserializedValue instanceof UDTValue) {
 
-        return (T) deserializedValue;
+            UDTValue udtValue = (UDTValue) deserializedValue;
+            try {
+                return (T) toObject(udtValue);
+            } catch (InstantiationException | IllegalAccessException e) {
+                LOGGER.warn("Can't map to entity", e);
+            }
+        }
+        return null;
     }
 
     private Object toObject(UDTValue udtValue) throws InstantiationException, IllegalAccessException {
@@ -134,32 +143,44 @@ class UserDataTypeMetadata implements ColumnMetadata {
 
         udtType.getFieldNames()
                .forEach(fieldName -> {
-                   ColumnMetadata columnMetadata = udtColumnsMetadata.get(fieldName);
+                   try {
+                       ByteBuffer dataBuffer = udtValue.getBytesUnsafe(fieldName);
 
-                   ByteBuffer dataBuffer = udtValue.getBytesUnsafe(fieldName);
+                       ColumnMetadata columnMetadata = udtColumnsMetadata.get(fieldName);
 
-                   Object fieldValue = columnMetadata.deserialize(dataBuffer);
+                       Object fieldValue = columnMetadata.deserialize(dataBuffer);
 
-                   columnMetadata.writeValue(newInstance, fieldValue);
+                       columnMetadata.writeValue(newInstance, fieldValue);
+                   } catch (IllegalArgumentException e) {
+                       LOGGER.warn(String.format("Invalid UDT `%s` field `%s`", getName(), fieldName));
+                   }
+
                });
 
         return newInstance;
     }
 
     @NotNull
-    private UDTValue mapToUdt(@NotNull Object udtValue) {
+    private UDTValue mapToUdt(@Nullable Object udtValue) {
         UDTValue udtValueInstance = udtType.newValue();
+
+        if (udtValue == null) {
+            return udtValueInstance;
+        }
 
         udtType.getFieldNames()
                .forEach(field -> {
                    ColumnMetadata columnMetadata = udtColumnsMetadata.get(field);
 
-                   Object fieldValue = columnMetadata.readValue(udtValue);
+                   try {
+                       Object fieldValue = columnMetadata.readValue(udtValue);
+                       ByteBuffer byteBuffer = columnMetadata.serialize(fieldValue);
 
-                   ByteBuffer serializedFieldValue = columnMetadata.serialize(fieldValue);
-
-                   udtValueInstance.setBytesUnsafe(columnMetadata.getName(), serializedFieldValue);
-
+//                       ByteBuffer serializedFieldValue = udtType.getFieldType(field).set(fieldValue, ProtocolVersion.NEWEST_SUPPORTED);
+                       udtValueInstance.setBytesUnsafe(columnMetadata.getName(), byteBuffer);
+                   } catch (Exception e) {
+                       LOGGER.warn(String.format("Can't map to udt [%s]", udtClassType.getName()), e);
+                   }
                });
 
         return udtValueInstance;

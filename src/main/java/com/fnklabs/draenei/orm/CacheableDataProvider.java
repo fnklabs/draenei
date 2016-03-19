@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
@@ -160,7 +161,22 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      * @return Return value from entry processor
      */
     public <ReturnValue> ReturnValue executeOnEntry(@NotNull Entry entry, @NotNull CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
-        return cache.invoke(buildHashCode(entry), entryProcessor);
+        long key = buildHashCode(entry);
+
+//        if (!cache.containsKey(key)) {
+//            List<Object> primaryKeys = getPrimaryKeys(entry);
+//
+//            List<Entry> entries = super.fetch(primaryKeys);
+//
+//
+//            Optional<Entry> first = entries.stream().findFirst();
+//
+//            if (first.isPresent()) {
+//                cache.putIfAbsent(key, first.get());
+//            }
+//        }
+
+        return cache.invoke(key, entryProcessor);
     }
 
     /**
@@ -215,7 +231,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     }
 
     @NotNull
-    protected String getMapName() {
+    private String getMapName() {
         return cache.getName();
     }
 
@@ -227,7 +243,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
                       EventType.EVT_CACHE_OBJECT_REMOVED);
     }
 
-    protected enum MetricsType {
+    private enum MetricsType {
         CACHEABLE_DATA_PROVIDER_FIND,
         CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE,
         CACHEABLE_DATA_PROVIDER_HITS,
