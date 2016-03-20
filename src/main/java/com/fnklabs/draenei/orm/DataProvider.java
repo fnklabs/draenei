@@ -7,7 +7,6 @@ import com.datastax.driver.core.querybuilder.Insert;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
 import com.fnklabs.draenei.CassandraClient;
-import com.fnklabs.draenei.ExecutorServiceFactory;
 import com.fnklabs.draenei.orm.exception.CanNotBuildEntryCacheKey;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.fnklabs.draenei.orm.exception.QueryException;
@@ -28,7 +27,6 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -39,11 +37,6 @@ public class DataProvider<V> {
      * hashing function to build Entity hash code
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
-
-    /**
-     * Map for saving DataProviders by DataProvider class
-     */
-    private static final Map<Class, DataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
 
     @NotNull
     private static final com.fnklabs.metrics.Metrics METRICS = MetricsFactory.getMetrics();
@@ -78,32 +71,6 @@ public class DataProvider<V> {
         this.executorService = executorService;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
-    }
-
-    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClient) {
-        this.clazz = clazz;
-        this.cassandraClient = cassandraClient;
-        this.executorService = ExecutorServiceFactory.DEFAULT_EXECUTOR;
-        this.entityMetadata = build(clazz);
-        this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
-    }
-
-    /**
-     * Get DataProvider service
-     *
-     * @param clazz                  DataProvider class
-     * @param cassandraClientFactory CassandraClientFactory instance
-     * @param <T>                    DataProvider class type
-     *
-     * @return DataProvider instance
-     */
-    public static <T> DataProvider<T> getDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory) {
-        return DATA_PROVIDERS_REGISTRY.compute(clazz, (dataProviderClass, dataProvider) -> {
-            if (dataProvider == null) {
-                return new DataProvider<T>(clazz, cassandraClientFactory);
-            }
-            return dataProvider;
-        });
     }
 
     /**

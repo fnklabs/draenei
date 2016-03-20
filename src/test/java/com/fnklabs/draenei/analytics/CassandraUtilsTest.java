@@ -1,7 +1,8 @@
-package com.fnklabs.draenei.orm.analytics;
+package com.fnklabs.draenei.analytics;
 
 import com.datastax.driver.core.Host;
 import com.fnklabs.draenei.CassandraClient;
+import com.fnklabs.draenei.analytics.CassandraUtils;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 import org.junit.Assert;

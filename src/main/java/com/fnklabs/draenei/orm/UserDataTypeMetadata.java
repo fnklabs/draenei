@@ -3,7 +3,6 @@ package com.fnklabs.draenei.orm;
 import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.UDTValue;
 import com.datastax.driver.core.UserType;
-import com.fnklabs.draenei.orm.exception.MetadataException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -152,7 +151,7 @@ class UserDataTypeMetadata implements ColumnMetadata {
 
                        columnMetadata.writeValue(newInstance, fieldValue);
                    } catch (IllegalArgumentException e) {
-                       LOGGER.warn(String.format("Invalid UDT `%s` field `%s`", getName(), fieldName));
+                       LOGGER.warn(String.format("Invalid field `%s` for UDT `%s` ", fieldName, getName()));
                    }
 
                });

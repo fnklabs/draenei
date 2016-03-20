@@ -20,9 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -38,10 +36,6 @@ import java.util.concurrent.ExecutorService;
 public class CacheableDataProvider<Entry extends Serializable> extends DataProvider<Entry> {
 
     public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
-    /**
-     * Map for saving DataProviders by DataProvider class
-     */
-    private static final Map<Class, CacheableDataProvider> DATA_PROVIDERS_REGISTRY = new ConcurrentHashMap<>();
     private final IgniteCache<Long, Entry> cache;
     private final CassandraClientFactory cassandraClientFactory;
 
@@ -55,33 +49,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
         initializeEventListener(ignite);
-    }
-
-    public CacheableDataProvider(@NotNull Class<Entry> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull Ignite ignite) {
-        super(clazz, cassandraClientFactory);
-
-        this.cassandraClientFactory = cassandraClientFactory;
-        cache = ignite.getOrCreateCache(getCacheConfiguration());
-
-        initializeEventListener(ignite);
-    }
-
-    /**
-     * Get DataProvider service
-     *
-     * @param clazz                  DataProvider class
-     * @param cassandraClientFactory CassandraClientFactory instance
-     * @param <T>                    DataProvider class type
-     *
-     * @return DataProvider instance
-     */
-    public static <T> CacheableDataProvider getCacheableDataProvider(Class<T> clazz, @NotNull CassandraClientFactory cassandraClientFactory, Ignite ignite) {
-        return DATA_PROVIDERS_REGISTRY.compute(clazz, (dataProviderClass, dataProvider) -> {
-            if (dataProvider == null) {
-                return new CacheableDataProvider(clazz, cassandraClientFactory, ignite);
-            }
-            return dataProvider;
-        });
     }
 
     @Override
@@ -163,18 +130,17 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public <ReturnValue> ReturnValue executeOnEntry(@NotNull Entry entry, @NotNull CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
         long key = buildHashCode(entry);
 
-//        if (!cache.containsKey(key)) {
-//            List<Object> primaryKeys = getPrimaryKeys(entry);
-//
-//            List<Entry> entries = super.fetch(primaryKeys);
-//
-//
-//            Optional<Entry> first = entries.stream().findFirst();
-//
-//            if (first.isPresent()) {
-//                cache.putIfAbsent(key, first.get());
-//            }
-//        }
+        if (!cache.containsKey(key)) {
+            List<Object> primaryKeys = getPrimaryKeys(entry);
+
+            List<Entry> entries = super.fetch(primaryKeys);
+
+            Optional<Entry> first = entries.stream().findFirst();
+
+            if (first.isPresent()) {
+                cache.putIfAbsent(key, first.get());
+            }
+        }
 
         return cache.invoke(key, entryProcessor);
     }
@@ -226,7 +192,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      */
     @NotNull
     public CacheConfiguration<Long, Entry> getCacheConfiguration() {
-        return CacheUtils.getDefaultCacheConfiguration(getEntityClass(), new CacheWriterFactory<Entry>(cassandraClientFactory, getEntityClass()));
+        return CacheUtils.getDefaultCacheConfiguration(getEntityClass());
 
     }
 
@@ -238,8 +204,8 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     private void initializeEventListener(@NotNull Ignite ignite) {
         ignite.events()
               .localListen(new LocalCacheEventListener(),
-//                      EventType.EVT_CACHE_OBJECT_EXPIRED,
-//                      EventType.EVT_CACHE_OBJECT_PUT,
+                      EventType.EVT_CACHE_OBJECT_EXPIRED,
+                      EventType.EVT_CACHE_OBJECT_PUT,
                       EventType.EVT_CACHE_OBJECT_REMOVED);
     }
 
@@ -264,12 +230,12 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
                 if (StringUtils.equals(getMapName(), cacheEvent.cacheName())) {
 
                     switch (cacheEvent.type()) {
-//                        case EventType.EVT_CACHE_OBJECT_EXPIRED:
-//                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
-//                            break;
-//                        case EventType.EVT_CACHE_OBJECT_PUT:
-//                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
-//                            break;
+                        case EventType.EVT_CACHE_OBJECT_EXPIRED:
+                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
+                            break;
+                        case EventType.EVT_CACHE_OBJECT_PUT:
+                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
+                            break;
                         case EventType.EVT_CACHE_OBJECT_REMOVED:
                             CacheableDataProvider.super.removeAsync((Entry) cacheEvent.oldValue());
                             break;

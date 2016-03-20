@@ -8,15 +8,10 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 
-import javax.cache.configuration.Factory;
-import javax.cache.integration.CacheWriter;
-
 /**
  * Cache utils
  */
 class CacheUtils {
-    private static final long OFF_HEAP_MAX_MEM = 5 * 1024L * 1024L * 1024L;
-
     /**
      * Return cache name for specified entity class
      *
@@ -33,18 +28,17 @@ class CacheUtils {
      *
      * @return Cache Configuration for specified entity class
      */
-    private static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName, Factory<CacheWriter<Key, Entry>> cacheWriterFactory) {
+    private static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
         cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setReadThrough(false);
-        cacheCfg.setWriteThrough(true);
-        cacheCfg.setCacheWriterFactory(cacheWriterFactory);
+        cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(100000));
-        cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(OFF_HEAP_MAX_MEM);
+        cacheCfg.setSwapEnabled(false);
+        cacheCfg.setOffHeapMaxMemory(-1);
         return cacheCfg;
     }
 
@@ -56,7 +50,7 @@ class CacheUtils {
      *
      * @return Cache Configuration for specified entity class
      */
-    static <Entry> CacheConfiguration<Long, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass, Factory<CacheWriter<Long, Entry>> cacheWriterFactory) {
-        return getDefaultCacheConfiguration(getCacheName(entityClass), cacheWriterFactory);
+    static <Entry> CacheConfiguration<Long, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass) {
+        return getDefaultCacheConfiguration(getCacheName(entityClass));
     }
 }

@@ -1,4 +1,4 @@
-package com.fnklabs.draenei.orm.analytics;
+package com.fnklabs.draenei.analytics;
 
 import com.fnklabs.draenei.orm.CassandraClientFactory;
 import org.apache.ignite.Ignite;

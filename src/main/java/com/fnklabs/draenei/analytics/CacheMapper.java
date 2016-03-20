@@ -1,4 +1,4 @@
-package com.fnklabs.draenei.orm.analytics;
+package com.fnklabs.draenei.analytics;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -12,21 +12,19 @@ import javax.cache.Cache;
 import java.util.ArrayList;
 import java.util.List;
 
-class ReadLocalDataFromCache<Key, Value, Output> extends ComputeJobAdapter {
+public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter {
+    private final CacheConfiguration<Key, Value> cacheConfiguration;
+
     @IgniteInstanceResource
     private Ignite ignite;
 
-    private final CacheConfiguration<Key, Value> cacheConfiguration;
 
-    private final MapFunction<Key, Value, Output> mapFunction;
-
-    ReadLocalDataFromCache(CacheConfiguration<Key, Value> cacheConfiguration, MapFunction<Key, Value, Output> mapFunction) {
+    protected CacheMapper(CacheConfiguration<Key, Value> cacheConfiguration) {
         this.cacheConfiguration = cacheConfiguration;
-        this.mapFunction = mapFunction;
     }
 
     @Override
-    public List<Output> execute() throws IgniteException {
+    public final List<Output> execute() throws IgniteException {
         IgniteCache<Key, Value> cache = ignite.getOrCreateCache(cacheConfiguration);
 
         Iterable<Cache.Entry<Key, Value>> entries = cache.localEntries(CachePeekMode.PRIMARY);
@@ -35,11 +33,19 @@ class ReadLocalDataFromCache<Key, Value, Output> extends ComputeJobAdapter {
 
         entries.forEach(entry -> {
             Value value = entry.getValue();
-            Output map = mapFunction.map(entry.getKey(), value);
+            Output output = map(entry.getKey(), value);
 
-            values.add(map);
+            if (output != null) {
+                values.add(output);
+            }
         });
 
         return values;
     }
+
+    protected Ignite getIgnite() {
+        return ignite;
+    }
+
+    protected abstract Output map(Key key, Value value);
 }
