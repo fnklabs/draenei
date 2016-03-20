@@ -4,12 +4,14 @@ import com.datastax.driver.core.HostDistance;
 import com.fnklabs.draenei.CassandraClient;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.UUID;
 
+@Ignore
 public class UDTTest {
     private DataProvider<TestEntity> testDataProvider;
 

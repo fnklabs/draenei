@@ -91,7 +91,6 @@ public class AnalyticsUtils {
                                                                                 analyticsContext.getCassandraClientFactory(),
                                                                                 mapConsumer);
                                                                     })
-                                                                    .limit(5)
                                                                     .collect(Collectors.toList());
 
         ClusterGroup clusterGroup = analyticsContext.getIgnite()
