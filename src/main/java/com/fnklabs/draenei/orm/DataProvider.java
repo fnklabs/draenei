@@ -321,7 +321,7 @@ public class DataProvider<V> {
         boundStatement.bind(startToken, endToken);
 
         boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
-        boundStatement.setConsistencyLevel(getEntityMetadata().getReadConsistencyLevel());
+        boundStatement.setConsistencyLevel(ConsistencyLevel.ONE);
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
 

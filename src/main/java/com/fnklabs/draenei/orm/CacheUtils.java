@@ -30,7 +30,7 @@ class CacheUtils {
      */
     private static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
-        cacheCfg.setBackups(1);
+        cacheCfg.setBackups(0);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setReadThrough(false);
