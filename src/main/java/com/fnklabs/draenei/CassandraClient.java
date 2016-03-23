@@ -16,9 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -60,15 +58,13 @@ public class CassandraClient {
      * @param password        Password
      * @param defaultKeyspace Default keyspace
      * @param hosts           Cassandra nodes
-     * @param hostDistance    Cassandra host distance
      *
      * @throws IllegalArgumentException if can't connect to cluster
      */
     public CassandraClient(@Nullable String username,
                            @Nullable String password,
                            @NotNull String defaultKeyspace,
-                           @NotNull String hosts,
-                           @NotNull HostDistance hostDistance) {
+                           @NotNull String hosts) {
 
 
         Cluster.Builder builder = Cluster.builder()
@@ -77,7 +73,7 @@ public class CassandraClient {
 //                                         .withCompression(ProtocolOptions.Compression.SNAPPY)
                                          .withQueryOptions(getQueryOptions())
                                          .withRetryPolicy(new LoggingRetryPolicy(FallthroughRetryPolicy.INSTANCE))
-                                         .withLoadBalancingPolicy(getLoadBalancingPolicy(hostDistance))
+                                         .withLoadBalancingPolicy(getLoadBalancingPolicy())
                                          .withReconnectionPolicy(new ConstantReconnectionPolicy(RECONNECTION_DELAY_TIME))
                                          .withPoolingOptions(getPoolingOptions())
                                          .withSocketOptions(getSocketOptions())
@@ -108,6 +104,29 @@ public class CassandraClient {
             LOGGER.warn("Cant build cluster", e);
             throw e;
         }
+    }
+
+    public Map<TokenRange, Set<Host>> getTokenRangeOwners(String keyspace) {
+        Map<TokenRange, Set<Host>> tokenRangeOwners = new HashMap<>();
+
+        getMembers().stream()
+                    .forEach(host -> {
+                        Set<TokenRange> tokenRanges = getTokenRanges(host, keyspace);
+
+                        tokenRanges.stream()
+                                   .forEach(tokenRange -> {
+                                       tokenRangeOwners.compute(tokenRange, (s, hosts) -> {
+                                           if (hosts == null) {
+                                               hosts = new LinkedHashSet<Host>();
+                                           }
+                                           hosts.add(host);
+
+                                           return hosts;
+                                       });
+                                   });
+                    });
+
+        return tokenRangeOwners;
     }
 
     @NotNull
@@ -303,6 +322,23 @@ public class CassandraClient {
         return new PoolingOptions();
     }
 
+    @NotNull
+    protected LoadBalancingPolicy getLoadBalancingPolicy() {
+        RoundRobinPolicy roundRobinPolicy = new RoundRobinPolicy();
+
+        return new TokenAwarePolicy(roundRobinPolicy);
+    }
+
+    private Set<TokenRange> getTokenRanges(Host host, String keyspace) {
+        Metadata metadata = cluster.getMetadata();
+
+        Set<TokenRange> ranges = metadata.getTokenRanges(keyspace, host);
+
+        return ranges.stream()
+                     .flatMap(range -> range.unwrap().stream())
+                     .collect(Collectors.toSet());
+    }
+
     private <T> void monitorFuture(@NotNull Timer timer, @NotNull ListenableFuture<T> future) {
         Futures.addCallback(future, new FutureCallback<T>() {
             @Override
@@ -356,18 +392,6 @@ public class CassandraClient {
         CASSANDRA_QUERIES_ERRORS,
         CASSANDRA_PROCESSING_QUERIES,
         CASSANDRA_EXECUTE_ASYNC, CASSANDRA_PREPARE_STMT,
-    }
-
-    @NotNull
-    protected static LoadBalancingPolicy getLoadBalancingPolicy(@NotNull final HostDistance hostDistance) {
-        RoundRobinPolicy roundRobinPolicy = new RoundRobinPolicy() {
-            @Override
-            public HostDistance distance(Host host) {
-                return hostDistance;
-            }
-        };
-
-        return new TokenAwarePolicy(roundRobinPolicy);
     }
 
     private static void debugClusterInfo(Metadata metadata) {

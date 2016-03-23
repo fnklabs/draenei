@@ -1,9 +1,7 @@
 package com.fnklabs.draenei.analytics;
 
-import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
-import com.google.common.collect.Range;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
@@ -15,9 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
-import java.util.Collection;
-import java.util.List;
-import java.util.stream.Collectors;
 
 public class AnalyticsUtils {
 
@@ -30,20 +25,14 @@ public class AnalyticsUtils {
      * Will generate token range and execute tasks to load data from cassandra by token range
      *
      * @param analyticsContext Analytics context instance for retrieving distributed executor service and cassandra factory
-     * @param <ValueIn>        Entity class type
+     * @param <Entity>         Entity class type
      *
      * @return Total processed entities
      */
     @NotNull
-    public static <ValueIn extends Serializable> Integer scanStorage(@NotNull AnalyticsContext analyticsContext, @NotNull DataProviderRangeScanFactory<ValueIn> scanFactory) {
+    public static <Entity extends Serializable> Integer scanStorage(@NotNull AnalyticsContext analyticsContext, @NotNull RangeScanTask<Entity> rangeScanTask) {
         Timer timer = MetricsFactory.getMetrics().getTimer("analytics.scan_storage");
 
-        CassandraClient cassandraClient = analyticsContext.getCassandraClientFactory().create();
-        Collection<Range<Long>> ranges = CassandraUtils.splitRing(cassandraClient);
-
-        List<DataProviderRangeScan<ValueIn>> calls = ranges.stream()
-                                                           .map(range -> scanFactory.create(range.lowerEndpoint(), range.upperEndpoint()))
-                                                           .collect(Collectors.toList());
 
         ClusterGroup clusterGroup = analyticsContext.getIgnite()
                                                     .cluster()
@@ -51,7 +40,7 @@ public class AnalyticsUtils {
 
         Integer loadedDocuments = analyticsContext.getIgnite()
                                                   .compute(clusterGroup)
-                                                  .call(calls, new ScanStorageReducer());
+                                                  .execute(rangeScanTask, null);
 
         timer.stop();
 
@@ -59,6 +48,7 @@ public class AnalyticsUtils {
 
         return loadedDocuments;
     }
+
 
     /**
      * Execute compute operation with MR paradigm

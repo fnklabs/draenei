@@ -47,8 +47,8 @@ public class MapReduceTask<KeyIn, ValueIn, ValueOut, ReduceResult> extends Compu
         List<ValueOut> nodesResponse = new ArrayList<>();
 
         for (ComputeJobResult res : results) {
-            List<ValueOut> data = res.<List<ValueOut>>getData();
-            nodesResponse.addAll(data);
+            ValueOut data = res.<ValueOut>getData();
+            nodesResponse.add(data);
         }
 
         return finalize(nodesResponse);
@@ -65,7 +65,7 @@ public class MapReduceTask<KeyIn, ValueIn, ValueOut, ReduceResult> extends Compu
 
     @NotNull
     protected CacheMapper<KeyIn, ValueIn, ValueOut> getCacheMapper() {
-        return new LogMapper<KeyIn, ValueIn, ValueOut>(cacheConfiguration);
+        return new LogMapper<>(cacheConfiguration);
     }
 
     private static class LogMapper<KeyIn, ValueIn, ValueOut> extends CacheMapper<KeyIn, ValueIn, ValueOut> {
@@ -75,9 +75,12 @@ public class MapReduceTask<KeyIn, ValueIn, ValueOut, ReduceResult> extends Compu
         }
 
         @Override
-        protected ValueOut map(KeyIn keyIn, ValueIn valueIn) {
-            LoggerFactory.getLogger(LogMapper.class).debug("Input data {}:{}", keyIn, valueIn);
+        public ValueOut execute() throws IgniteException {
+            LoggerFactory.getLogger(LogMapper.class).debug("Execute mapper");
+
             return null;
         }
+
+
     }
 }

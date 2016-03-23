@@ -285,7 +285,11 @@ public class DataProvider<V> {
         return resultFuture;
     }
 
-    public <UserCallback extends Consumer<V>> int load(long startToken, long endToken, UserCallback consumer) {
+    public String getKeyspace() {
+        return getEntityMetadata().getKeyspace();
+    }
+
+    public <UserCallback extends Consumer<V>> int load(long start, long end, UserCallback consumer) {
         Select select = QueryBuilder.select()
                                     .all()
                                     .from(getEntityMetadata().getTableName());
@@ -306,19 +310,15 @@ public class DataProvider<V> {
             primaryKeys[i] = columnName;
         }
 
-        Select.Where where = select.where(QueryBuilder.gte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
+        Select.Where where = select.where(QueryBuilder.gt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()))
+                                   .and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
 
-        if (endToken != Long.MAX_VALUE) {
-            where = where.and(QueryBuilder.lt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
-        } else {
-            where = where.and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
-        }
 
         PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
-        prepare.setConsistencyLevel(getReadConsistencyLevel());
+        prepare.setConsistencyLevel(ConsistencyLevel.ONE);
 
         BoundStatement boundStatement = new BoundStatement(prepare);
-        boundStatement.bind(startToken, endToken);
+        boundStatement.bind(start, end);
 
         boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
         boundStatement.setConsistencyLevel(ConsistencyLevel.ONE);

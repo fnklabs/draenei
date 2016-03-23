@@ -1,6 +1,5 @@
 package com.fnklabs.draenei.orm;
 
-import com.datastax.driver.core.HostDistance;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.ExecutorServiceFactory;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -30,7 +29,7 @@ public class CacheableDataProviderTest {
 
     @Before
     public void setUp() throws Exception {
-        cassandraClient = new CassandraClient("", "", "test", "10.211.55.19", HostDistance.LOCAL);
+        cassandraClient = new CassandraClient("", "", "test", "10.211.55.19");
         ignite = Ignition.start(getIgniteConfiguration());
     }
 

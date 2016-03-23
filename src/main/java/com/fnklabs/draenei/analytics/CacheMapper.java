@@ -9,8 +9,6 @@ import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.resources.IgniteInstanceResource;
 
 import javax.cache.Cache;
-import java.util.ArrayList;
-import java.util.List;
 
 public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter {
     private final CacheConfiguration<Key, Value> cacheConfiguration;
@@ -23,29 +21,19 @@ public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter 
         this.cacheConfiguration = cacheConfiguration;
     }
 
+
     @Override
-    public final List<Output> execute() throws IgniteException {
+    public abstract Output execute() throws IgniteException;
+
+    protected Iterable<Cache.Entry<Key, Value>> getLocalEntries() {
         IgniteCache<Key, Value> cache = ignite.getOrCreateCache(cacheConfiguration);
 
-        Iterable<Cache.Entry<Key, Value>> entries = cache.localEntries(CachePeekMode.PRIMARY);
-
-        List<Output> values = new ArrayList<>();
-
-        entries.forEach(entry -> {
-            Value value = entry.getValue();
-            Output output = map(entry.getKey(), value);
-
-            if (output != null) {
-                values.add(output);
-            }
-        });
-
-        return values;
+        return cache.localEntries(CachePeekMode.PRIMARY);
     }
 
     protected Ignite getIgnite() {
         return ignite;
     }
 
-    protected abstract Output map(Key key, Value value);
+
 }
