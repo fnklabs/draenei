@@ -290,6 +290,8 @@ public class DataProvider<V> {
     }
 
     public <UserCallback extends Consumer<V>> int load(long start, long end, UserCallback consumer) {
+        Timer timer = getMetrics().getTimer("data_provider.load");
+
         Select select = QueryBuilder.select()
                                     .all()
                                     .from(getEntityMetadata().getTableName());
@@ -310,12 +312,20 @@ public class DataProvider<V> {
             primaryKeys[i] = columnName;
         }
 
+
         Select.Where where = select.where(QueryBuilder.gt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()))
                                    .and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
 
 
+        Timer prepareTimer = getMetrics().getTimer("data_provider.load.prepare");
+
         PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
-        prepare.setConsistencyLevel(ConsistencyLevel.ONE);
+
+        prepareTimer.stop();
+
+        LOGGER.debug("Complete to prepare stmt in {}", prepareTimer);
+
+        Timer executeTimer = getMetrics().getTimer("data_provider.load.execute");
 
         BoundStatement boundStatement = new BoundStatement(prepare);
         boundStatement.bind(start, end);
@@ -325,161 +335,23 @@ public class DataProvider<V> {
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
 
-        Iterator<Row> iterator = resultSet.iterator();
+        executeTimer.stop();
 
-        int loadedItems = 0;
+        LOGGER.debug("Complete to execute stmt in {}", executeTimer);
 
-        while (iterator.hasNext()) {
-            METRICS.getCounter(MetricsType.DATA_PROVIDER_LOAD_BY_TOKEN_RANGE.name()).inc();
-            Row next = iterator.next();
-
-            V instance = mapToObject(next);
-
-            if (instance != null) {
-                consumer.accept(instance);
-            }
-            loadedItems++;
-        }
-
-        return loadedItems;
-    }
-
-    public Class<V> getEntityClass() {
-        return clazz;
-    }
-
-    /**
-     * Build hash code for entity
-     *
-     * @param entity Input entity
-     *
-     * @return Cache key
-     */
-    protected long buildHashCode(@NotNull V entity) {
-        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
-
-        List<Object> keys = getPrimaryKeys(entity);
-
-        long hashCode = buildHashCode(keys);
+        int loadedItems = fetchResultSet(resultSet, consumer);
 
         timer.stop();
 
-        return hashCode;
-    }
+        LOGGER.debug("Complete load data in range ({},{}] in {}", start, end, timer);
 
-    @NotNull
-    protected List<Object> getPrimaryKeys(@NotNull V entity) {
-        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
-        List<Object> keys = new ArrayList<>();
-
-        for (int i = 0; i < primaryKeysSize; i++) {
-            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
-
-            if (primaryKey.isPresent()) {
-                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
-
-                Object value = primaryKeyMetadata.readValue(entity);
-                keys.add(value);
-            }
-        }
-        return keys;
-    }
-
-    /**
-     * Build cache key
-     *
-     * @param keys Entity keys
-     *
-     * @return Cache key
-     */
-    protected final long buildHashCode(Object... keys) {
-        ArrayList<Object> keyList = new ArrayList<>();
-
-        Collections.addAll(keyList, keys);
-
-        return buildHashCode(keyList);
+        return loadedItems;
     }
 
     @NotNull
     protected Metrics getMetrics() {
         return METRICS;
-    }
-
-    protected ListenableFuture<List<V>> fetchAsync(List<Object> keys) {
-        List<V> result = new ArrayList<>();
-
-        return Futures.transform(fetchAsync(keys, result::add), (Boolean fetchResult) -> result);
-    }
-
-    protected ListenableFuture<Boolean> fetchAsync(List<Object> keys, Consumer<V> consumer) {
-        BoundStatement boundStatement = getFetchBoundStatement(keys);
-
-        ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
-
-        return Futures.transform(resultSetFuture, (ResultSet resultSet) -> {
-            Iterator<Row> iterator = resultSet.iterator();
-
-            while (iterator.hasNext()) {
-                Row next = iterator.next();
-
-                V instance = mapToObject(next);
-
-                consumer.accept(instance);
-            }
-
-            return true;
-        }, getExecutorService());
-    }
-
-    protected List<V> fetch(List<Object> keys) {
-        List<V> result = new ArrayList<>();
-
-        fetch(keys, result::add);
-
-        return result;
-    }
-
-    protected void fetch(List<Object> keys, Consumer<V> consumer) {
-        BoundStatement boundStatement = getFetchBoundStatement(keys);
-
-        ResultSet resultSet = getCassandraClient().execute(boundStatement);
-
-        Iterator<Row> iterator = resultSet.iterator();
-
-        while (iterator.hasNext()) {
-            Row next = iterator.next();
-
-            V instance = mapToObject(next);
-
-            consumer.accept(instance);
-        }
-    }
-
-    protected <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
-        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
-            @Override
-            public Boolean apply(Input input) {
-                return true;
-            }
-        });
-    }
-
-    /**
-     * Monitor future completion
-     *
-     * @param timer            Timer that will be close on Future success or failure
-     * @param listenableFuture Listenable future
-     * @param userCallback     User callback that will be executed on Future success
-     * @param <Input>          Future class type
-     * @param <Output>         User callback output
-     *
-     * @return Listenable future
-     */
-    protected <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
-        Futures.addCallback(listenableFuture, new FutureTimerCallback<>(timer));
-
-        return Futures.transform(listenableFuture, new JdkFunctionWrapper<>(userCallback));
     }
 
     @NotNull
@@ -497,6 +369,81 @@ public class DataProvider<V> {
     @Nullable
     protected V mapToObject(@NotNull Row row) {
         return mapToObjectFunction.apply(row);
+    }
+
+    /**
+     * Monitor future completion
+     *
+     * @param timer            Timer that will be close on Future success or failure
+     * @param listenableFuture Listenable future
+     * @param userCallback     User callback that will be executed on Future success
+     * @param <Input>          Future class type
+     * @param <Output>         User callback output
+     *
+     * @return Listenable future
+     */
+    private <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
+        Futures.addCallback(listenableFuture, new FutureTimerCallback<>(timer));
+
+        return Futures.transform(listenableFuture, new JdkFunctionWrapper<>(userCallback));
+    }
+
+    private ListenableFuture<List<V>> fetchAsync(List<Object> keys) {
+        List<V> result = new ArrayList<>();
+
+        return Futures.transform(fetchAsync(keys, result::add), (Boolean fetchResult) -> result);
+    }
+
+    private ListenableFuture<Boolean> fetchAsync(List<Object> keys, Consumer<V> consumer) {
+        BoundStatement boundStatement = getFetchBoundStatement(keys);
+
+        ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
+
+        return Futures.transform(resultSetFuture, (ResultSet resultSet) -> {
+            fetchResultSet(resultSet, consumer);
+
+            return true;
+        }, getExecutorService());
+    }
+
+    private void fetch(List<Object> keys, Consumer<V> consumer) {
+        BoundStatement boundStatement = getFetchBoundStatement(keys);
+
+        ResultSet resultSet = getCassandraClient().execute(boundStatement);
+
+        fetchResultSet(resultSet, consumer);
+    }
+
+    private int fetchResultSet(ResultSet resultSet, Consumer<V> consumer) {
+        Iterator<Row> iterator = resultSet.iterator();
+
+        int loadedItems = 0;
+
+        Timer fetchResultSetTimer = getMetrics().getTimer("data_provider.load.fetch");
+
+        while (iterator.hasNext()) {
+            if (resultSet.getAvailableWithoutFetching() == entityMetadata.getMaxFetchSize() && !resultSet.isFullyFetched())
+                resultSet.fetchMoreResults();
+
+            METRICS.getCounter(MetricsType.DATA_PROVIDER_LOAD_BY_TOKEN_RANGE.name()).inc();
+
+            Row next = iterator.next();
+
+            V instance = mapToObject(next);
+
+            if (instance != null) {
+                consumer.accept(instance);
+            }
+
+            loadedItems++;
+        }
+
+        fetchResultSetTimer.stop();
+
+        LOGGER.debug("Complete map to fetch data in {}", fetchResultSetTimer);
+        LOGGER.debug("Loaded items: {}", loadedItems);
+
+        return loadedItems;
     }
 
     @NotNull
@@ -648,7 +595,6 @@ public class DataProvider<V> {
         return EntityMetadata.buildEntityMetadata(clazz, getCassandraClient());
     }
 
-
     private enum MetricsType {
         DATA_PROVIDER_FIND_ONE,
         DATA_PROVIDER_SAVE,
@@ -656,6 +602,80 @@ public class DataProvider<V> {
         DATA_PROVIDER_FIND,
         DATA_PROVIDER_CREATE_KEY,
         DATA_PROVIDER_LOAD_BY_TOKEN_RANGE;
+    }
+
+    <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
+        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
+            @Override
+            public Boolean apply(Input input) {
+                return true;
+            }
+        });
+    }
+
+    List<V> fetch(List<Object> keys) {
+        List<V> result = new ArrayList<>();
+
+        fetch(keys, result::add);
+
+        return result;
+    }
+
+    Class<V> getEntityClass() {
+        return clazz;
+    }
+
+    /**
+     * Build hash code for entity
+     *
+     * @param entity Input entity
+     *
+     * @return Cache key
+     */
+    long buildHashCode(@NotNull V entity) {
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
+
+        List<Object> keys = getPrimaryKeys(entity);
+
+        long hashCode = buildHashCode(keys);
+
+        timer.stop();
+
+        return hashCode;
+    }
+
+    @NotNull
+    List<Object> getPrimaryKeys(@NotNull V entity) {
+        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
+
+        List<Object> keys = new ArrayList<>();
+
+        for (int i = 0; i < primaryKeysSize; i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (primaryKey.isPresent()) {
+                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+                Object value = primaryKeyMetadata.readValue(entity);
+                keys.add(value);
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * Build cache key
+     *
+     * @param keys Entity keys
+     *
+     * @return Cache key
+     */
+    final long buildHashCode(Object... keys) {
+        ArrayList<Object> keyList = new ArrayList<>();
+
+        Collections.addAll(keyList, keys);
+
+        return buildHashCode(keyList);
     }
 
 
