@@ -28,9 +28,9 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
 
     @Nullable
     @Override
-    public final Map<? extends RangeScanMapper, ClusterNode> map(List<ClusterNode> subgrid, @Nullable Object arg) throws IgniteException {
+    public final Map<? extends RangeScanJob, ClusterNode> map(List<ClusterNode> subgrid, @Nullable Object arg) throws IgniteException {
 
-        Map<RangeScanMapper, ClusterNode> tasks = new HashMap<>();
+        Map<RangeScanJob, ClusterNode> tasks = new HashMap<>();
 
         Map<Host, Set<TokenRange>> rangeScanTask = AnalyticsUtils.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient());
 
@@ -87,7 +87,7 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
     }
 
 
-    protected abstract RangeScanMapper createMapper(TokenRange tokenRange);
+    protected abstract RangeScanJob createMapper(TokenRange tokenRange);
 
     protected abstract DataProvider<Entity> getDataProvider();
 
