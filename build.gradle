@@ -18,6 +18,7 @@ repositories {
     mavenCentral()
     mavenLocal()
     maven { url "http://dl.bintray.com/akuznetsov/russianmorphology" }
+    maven { url "http://www.gridgainsystems.com/nexus/content/repositories/external" }
 }
 
 buildscript {
@@ -61,9 +62,11 @@ dependencies {
     compile 'org.apache.lucene.morphology:russian:1.1'
     compile 'org.apache.lucene.morphology:english:1.1'
 
-    compile 'org.apache.ignite:ignite-core:1.5.0.final'
-    compile 'org.apache.ignite:ignite-slf4j:1.5.0.final'
-    compile 'org.apache.ignite:ignite-indexing:1.5.0.final'
+
+    compile 'org.apache.ignite:ignite-core:1.5.9'
+    compile 'org.apache.ignite:ignite-core:1.5.9'
+    compile 'org.apache.ignite:ignite-slf4j:1.5.9'
+    compile 'org.apache.ignite:ignite-indexing:1.5.9'
 
 
     compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.5'
