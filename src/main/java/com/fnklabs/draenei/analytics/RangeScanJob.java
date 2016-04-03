@@ -3,11 +3,13 @@ package com.fnklabs.draenei.analytics;
 import com.fnklabs.draenei.orm.DataProvider;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
+import com.google.common.base.Verify;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.compute.ComputeExecutionRejectedException;
 import org.apache.ignite.compute.ComputeJob;
 import org.apache.ignite.resources.IgniteInstanceResource;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +72,10 @@ public abstract class RangeScanJob<T extends Serializable> implements ComputeJob
         return LoggerFactory.getLogger(getClass());
     }
 
+    @NotNull
     protected Ignite getIgnite() {
+        Verify.verifyNotNull(ignite);
+
         return ignite;
     }
 
