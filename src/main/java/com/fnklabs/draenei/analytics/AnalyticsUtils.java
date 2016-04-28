@@ -5,6 +5,7 @@ import com.datastax.driver.core.TokenRange;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
@@ -115,15 +116,21 @@ public class AnalyticsUtils {
                                                     .forServers();
 
 
-        ReducerResult execute = analyticsContext.getIgnite()
-                                                .compute(clusterGroup)
-                                                .execute(mapReduceTask, null);
+        try {
+            ReducerResult execute = analyticsContext.getIgnite()
+                                                    .compute(clusterGroup)
+                                                    .execute(mapReduceTask, null);
 
-        timer.stop();
 
-        LOGGER.debug("Complete compute operation in {}", timer);
+            LOGGER.debug("Complete compute operation in {}", timer);
 
-        return execute;
+            return execute;
+        } catch (IgniteException e) {
+            LOGGER.warn("Can't complete compute operation", e);
+            throw e;
+        } finally {
+            timer.stop();
+        }
     }
 
     /**

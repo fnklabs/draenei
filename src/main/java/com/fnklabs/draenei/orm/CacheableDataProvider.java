@@ -37,7 +37,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
     private final IgniteCache<Long, Entry> cache;
-    private final CassandraClientFactory cassandraClientFactory;
 
     public CacheableDataProvider(@NotNull Class<Entry> clazz,
                                  @NotNull CassandraClientFactory cassandraClientFactory,
@@ -45,7 +44,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
                                  @NotNull ExecutorService executorService) {
         super(clazz, cassandraClientFactory, executorService);
 
-        this.cassandraClientFactory = cassandraClientFactory;
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
         initializeEventListener(ignite);
