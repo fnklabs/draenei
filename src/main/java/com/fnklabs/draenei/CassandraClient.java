@@ -84,6 +84,24 @@ public class CassandraClient {
      * @param password        Password
      * @param defaultKeyspace Default keyspace
      * @param hosts           Cassandra nodes
+     *
+     * @throws IllegalArgumentException if can't connect to cluster
+     */
+    public CassandraClient(@Nullable String username,
+                           @Nullable String password,
+                           @NotNull String defaultKeyspace,
+                           @NotNull String hosts) {
+        this(username, password, defaultKeyspace, hosts, 9042);
+
+    }
+
+    /**
+     * Construct cassandra client
+     *
+     * @param username        Username
+     * @param password        Password
+     * @param defaultKeyspace Default keyspace
+     * @param hosts           Cassandra nodes
      * @param port            Cassandra port
      *
      * @throws IllegalArgumentException if can't connect to cluster
