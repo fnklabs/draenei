@@ -1,7 +1,29 @@
 package com.fnklabs.draenei;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.policies.*;
+import com.datastax.driver.core.AtomicMonotonicTimestampGenerator;
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ConsistencyLevel;
+import com.datastax.driver.core.Host;
+import com.datastax.driver.core.KeyspaceMetadata;
+import com.datastax.driver.core.Metadata;
+import com.datastax.driver.core.PoolingOptions;
+import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ProtocolVersion;
+import com.datastax.driver.core.QueryOptions;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.ResultSetFuture;
+import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SocketOptions;
+import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.TableMetadata;
+import com.datastax.driver.core.TokenRange;
+import com.datastax.driver.core.policies.ConstantReconnectionPolicy;
+import com.datastax.driver.core.policies.DowngradingConsistencyRetryPolicy;
+import com.datastax.driver.core.policies.LoadBalancingPolicy;
+import com.datastax.driver.core.policies.LoggingRetryPolicy;
+import com.datastax.driver.core.policies.RoundRobinPolicy;
+import com.datastax.driver.core.policies.TokenAwarePolicy;
 import com.fnklabs.metrics.Metrics;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
@@ -16,7 +38,11 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -65,10 +91,30 @@ public class CassandraClient {
                            @Nullable String password,
                            @NotNull String defaultKeyspace,
                            @NotNull String hosts) {
+        this(username, password, defaultKeyspace, hosts, 9042);
+
+    }
+
+    /**
+     * Construct cassandra client
+     *
+     * @param username        Username
+     * @param password        Password
+     * @param defaultKeyspace Default keyspace
+     * @param hosts           Cassandra nodes
+     * @param port            Cassandra port
+     *
+     * @throws IllegalArgumentException if can't connect to cluster
+     */
+    public CassandraClient(@Nullable String username,
+                           @Nullable String password,
+                           @NotNull String defaultKeyspace,
+                           @NotNull String hosts,
+                           int port) {
 
 
         Cluster.Builder builder = Cluster.builder()
-                                         .withPort(9042)
+                                         .withPort(port)
                                          .withProtocolVersion(ProtocolVersion.NEWEST_SUPPORTED)
                                          .withQueryOptions(getQueryOptions())
                                          .withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE))
@@ -102,6 +148,14 @@ public class CassandraClient {
         } catch (IllegalArgumentException e) {
             LOGGER.warn("Cant build cluster", e);
             throw e;
+        }
+    }
+
+    private static void debugClusterInfo(Metadata metadata) {
+        LOGGER.info(String.format("Connecting to cluster: %s", metadata.getClusterName()));
+
+        for (Host host : metadata.getAllHosts()) {
+            LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
         }
     }
 
@@ -391,14 +445,6 @@ public class CassandraClient {
         CASSANDRA_QUERIES_ERRORS,
         CASSANDRA_PROCESSING_QUERIES,
         CASSANDRA_EXECUTE_ASYNC, CASSANDRA_PREPARE_STMT,
-    }
-
-    private static void debugClusterInfo(Metadata metadata) {
-        LOGGER.info(String.format("Connecting to cluster: %s", metadata.getClusterName()));
-
-        for (Host host : metadata.getAllHosts()) {
-            LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
-        }
     }
 
     private static class SessionQuery {
