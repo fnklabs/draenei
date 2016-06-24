@@ -54,49 +54,6 @@ public class AnalyticsUtils {
         return loadedDocuments;
     }
 
-    public static Map<Host, Set<TokenRange>> splitRangeScanTask(@NotNull String keyspace, @NotNull CassandraClient cassandraClient) {
-
-
-        Map<Host, Set<TokenRange>> result = new HashMap<>();
-
-
-        cassandraClient.getTokenRangeOwners(keyspace)
-                       .forEach((key, hosts) -> {
-                           Optional<Host> lessLoadedNode = hosts.stream()
-                                                                .sorted(new Comparator<Host>() {
-                                                                    @Override
-                                                                    public int compare(Host o1, Host o2) {
-
-                                                                        return Integer.compare(
-                                                                                result.getOrDefault(o1, Collections.emptySet()).size(),
-                                                                                result.getOrDefault(o2, Collections.emptySet()).size()
-                                                                        );
-                                                                    }
-                                                                })
-                                                                .findFirst();
-
-
-                           Host defaultValue = hosts.stream().findFirst().orElse(null);
-
-                           Host host = lessLoadedNode.orElse(defaultValue);
-
-                           result.compute(host, (node, tokens) -> {
-                               if (tokens == null) {
-                                   tokens = new HashSet<TokenRange>();
-                               }
-
-                               tokens.add(key);
-
-                               return tokens;
-                           });
-
-                       });
-
-        LOGGER.debug("Split result: {}", result);
-
-        return result;
-    }
-
     /**
      * Execute compute operation with MR paradigm
      *
@@ -150,6 +107,39 @@ public class AnalyticsUtils {
         cacheCfg.setSwapEnabled(true);
         cacheCfg.setOffHeapMaxMemory(5L * 1024L * 1024L * 1024L);
         return cacheCfg;
+    }
+
+    static Map<Host, Set<TokenRange>> splitRangeScanTask(@NotNull String keyspace, @NotNull CassandraClient cassandraClient) {
+        Map<Host, Set<TokenRange>> result = new HashMap<>();
+
+        cassandraClient.getTokenRangeOwners(keyspace)
+                       .forEach((key, hosts) -> {
+                           Optional<Host> lessLoadedNode = hosts.stream()
+                                                                .sorted((o1, o2) -> Integer.compare(
+                                                                        result.getOrDefault(o1, Collections.emptySet()).size(),
+                                                                        result.getOrDefault(o2, Collections.emptySet()).size()
+                                                                ))
+                                                                .findFirst();
+
+                           Host defaultValue = hosts.stream().findFirst().orElse(null);
+
+                           Host host = lessLoadedNode.orElse(defaultValue);
+
+                           result.compute(host, (node, tokens) -> {
+                               if (tokens == null) {
+                                   tokens = new HashSet<>();
+                               }
+
+                               tokens.add(key);
+
+                               return tokens;
+                           });
+
+                       });
+
+        LOGGER.debug("Split result: {}", result);
+
+        return result;
     }
 
 

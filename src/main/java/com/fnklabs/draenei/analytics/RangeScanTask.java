@@ -12,6 +12,7 @@ import org.apache.ignite.compute.ComputeJobResultPolicy;
 import org.apache.ignite.compute.ComputeTaskAdapter;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
@@ -20,6 +21,8 @@ import java.math.RoundingMode;
 import java.util.*;
 
 public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, Integer> {
+
+    private static final MathContext MATH_CONTEXT = new MathContext(2, RoundingMode.HALF_EVEN);
 
     @IgniteInstanceResource
     private transient Ignite ignite;
@@ -37,16 +40,21 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
 
         rangeScanTask.forEach((host, tokenRanges) -> {
 
-            String hostAddress = host.getAddress().getHostAddress();
+            String hostAddress = host.getAddress()
+                                     .getHostAddress();
 
             Optional<ClusterNode> nearNode = subgrid.stream()
-                                                    .filter(node -> node.addresses().contains(hostAddress))
+                                                    .filter(node -> node.addresses()
+                                                                        .contains(hostAddress))
                                                     .findFirst();
 
 
-            ClusterNode clusterNode = nearNode.orElse(subgrid.stream().findAny().orElse(null));
+            ClusterNode clusterNode = nearNode.orElse(subgrid.stream()
+                                                             .findAny()
+                                                             .orElse(null));
 
-            LoggerFactory.getLogger(getClass()).debug("Nearest node for cassandra host {} is {}", host.getAddress().getHostAddress(), clusterNode.addresses());
+            getLogger().debug("Nearest node for cassandra host {} is {}", host.getAddress()
+                                                                              .getHostAddress(), clusterNode.addresses());
 
 
             tokenRanges.stream()
@@ -66,8 +74,11 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
 
         if (result == ComputeJobResultPolicy.WAIT) {
             float completedTasks = (float) (rcvd.size()) / totalTasks * 100;
-            LoggerFactory.getLogger(getClass())
-                         .debug("Completed: {}/{} ({}%)", rcvd.size(), totalTasks, BigDecimal.valueOf(completedTasks).round(new MathContext(2, RoundingMode.HALF_EVEN)));
+            getLogger().debug(
+                    "Completed: {}/{} ({}%)",
+                    rcvd.size(),
+                    totalTasks,
+                    BigDecimal.valueOf(completedTasks).round(MATH_CONTEXT));
         }
 
         return result;
@@ -83,17 +94,22 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
             nodesResponse.add(data);
         }
 
-        return nodesResponse.stream().mapToInt(value -> value).sum();
+        return nodesResponse.stream()
+                            .mapToInt(value -> value)
+                            .sum();
     }
 
-
-    protected abstract RangeScanJob createMapper(TokenRange tokenRange);
-
-    protected abstract DataProvider<Entity> getDataProvider();
+    protected Logger getLogger() {
+        return LoggerFactory.getLogger(getClass());
+    }
 
     protected Ignite getIgnite() {
         return ignite;
     }
 
-    abstract protected CassandraClient getCassandraClient();
+    protected abstract RangeScanJob createMapper(TokenRange tokenRange);
+
+    protected abstract DataProvider<Entity> getDataProvider();
+
+    protected abstract CassandraClient getCassandraClient();
 }

@@ -82,6 +82,6 @@ public abstract class RangeScanJob<T extends Serializable> implements ComputeJob
     protected abstract DataProvider<T> getDataProvider();
 
     protected int reduce(List<T> items) {
-        return 0;
+        return items.size();
     }
 }
