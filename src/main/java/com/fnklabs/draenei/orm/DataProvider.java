@@ -77,7 +77,6 @@ public class DataProvider<V> {
      * Save entity asynchronously
      *
      * @param entity Target entity
-     *
      * @return Operation status result
      */
     public ListenableFuture<Boolean> saveAsync(@NotNull V entity) {
@@ -114,7 +113,6 @@ public class DataProvider<V> {
      * Save entity asynchronously
      *
      * @param entity Target entity
-     *
      * @return Operation status result
      */
     public Boolean save(@NotNull V entity) {
@@ -149,7 +147,6 @@ public class DataProvider<V> {
      * Remove entity asynchronously
      *
      * @param entity Target entity
-     *
      * @return Operation status result
      */
     public ListenableFuture<Boolean> removeAsync(@NotNull V entity) {
@@ -213,7 +210,6 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
-     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public ListenableFuture<V> findOneAsync(Object... keys) {
@@ -230,7 +226,6 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
-     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public V findOne(Object... keys) {
@@ -247,7 +242,6 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
-     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public ListenableFuture<List<V>> findAsync(Object... keys) {
@@ -268,7 +262,6 @@ public class DataProvider<V> {
      * Get records  by specified keys and send result to consumer
      *
      * @param keys Primary keys
-     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public List<V> find(Object... keys) {
@@ -313,25 +306,24 @@ public class DataProvider<V> {
         }
 
 
-        Select.Where where = select.where(QueryBuilder.gt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()))
-                                   .and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()));
+        Statement statement = select.where(QueryBuilder.gt(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()))
+                                    .and(QueryBuilder.lte(QueryBuilder.token(primaryKeys), QueryBuilder.bindMarker()))
+                                    .setConsistencyLevel(ConsistencyLevel.ONE)
+                                    .setFetchSize(getEntityMetadata().getMaxFetchSize());
 
 
         Timer prepareTimer = getMetrics().getTimer("data_provider.load.prepare");
 
-        PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), where.getQueryString());
+        PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), statement.toString());
 
         prepareTimer.stop();
 
-        LOGGER.debug("Complete to prepare stmt in {}", prepareTimer);
+        LOGGER.debug("Complete to prepare `{}` stmt in {}", prepare.getQueryString(), prepareTimer);
 
         Timer executeTimer = getMetrics().getTimer("data_provider.load.execute");
 
         BoundStatement boundStatement = new BoundStatement(prepare);
         boundStatement.bind(start, end);
-
-        boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
-        boundStatement.setConsistencyLevel(ConsistencyLevel.ONE);
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
 
@@ -349,6 +341,78 @@ public class DataProvider<V> {
         return loadedItems;
     }
 
+    <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
+        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
+            @Override
+            public Boolean apply(Input input) {
+                return true;
+            }
+        });
+    }
+
+    List<V> fetch(List<Object> keys) {
+        List<V> result = new ArrayList<>();
+
+        fetch(keys, result::add);
+
+        return result;
+    }
+
+    Class<V> getEntityClass() {
+        return clazz;
+    }
+
+    /**
+     * Build hash code for entity
+     *
+     * @param entity Input entity
+     * @return Cache key
+     */
+    long buildHashCode(@NotNull V entity) {
+        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
+
+        List<Object> keys = getPrimaryKeys(entity);
+
+        long hashCode = buildHashCode(keys);
+
+        timer.stop();
+
+        return hashCode;
+    }
+
+    @NotNull
+    List<Object> getPrimaryKeys(@NotNull V entity) {
+        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
+
+        List<Object> keys = new ArrayList<>();
+
+        for (int i = 0; i < primaryKeysSize; i++) {
+            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
+
+            if (primaryKey.isPresent()) {
+                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
+
+                Object value = primaryKeyMetadata.readValue(entity);
+                keys.add(value);
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * Build cache key
+     *
+     * @param keys Entity keys
+     * @return Cache key
+     */
+    final long buildHashCode(Object... keys) {
+        ArrayList<Object> keyList = new ArrayList<>();
+
+        Collections.addAll(keyList, keys);
+
+        return buildHashCode(keyList);
+    }
+
     @NotNull
     protected Metrics getMetrics() {
         return METRICS;
@@ -363,7 +427,6 @@ public class DataProvider<V> {
      * Map row result to object
      *
      * @param row ResultSet row
-     *
      * @return Mapped object or null if can't map fields
      */
     @Nullable
@@ -379,7 +442,6 @@ public class DataProvider<V> {
      * @param userCallback     User callback that will be executed on Future success
      * @param <Input>          Future class type
      * @param <Output>         User callback output
-     *
      * @return Listenable future
      */
     private <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
@@ -441,7 +503,7 @@ public class DataProvider<V> {
         fetchResultSetTimer.stop();
 
         LOGGER.debug("Complete map to fetch data in {}", fetchResultSetTimer);
-        LOGGER.debug("Loaded items: {}", loadedItems);
+//        LOGGER.debug("Loaded items: {}", loadedItems);
 
         return loadedItems;
     }
@@ -459,7 +521,8 @@ public class DataProvider<V> {
         if (parametersLength > 0) {
 
             if (parametersLength < getEntityMetadata().getMinPrimaryKeys() || parametersLength > getEntityMetadata().getPrimaryKeysSize()) {
-                throw new QueryException(String.format("Invalid number of parameters at least composite keys must me provided. Expected: %d Actual: %d", getEntityMetadata().getPartitionKeySize(), parametersLength));
+                throw new QueryException(String.format("Invalid number of parameters at least composite keys must me provided. Expected: %d Actual: %d", getEntityMetadata()
+                        .getPartitionKeySize(), parametersLength));
             }
 
             Select.Where where = null;
@@ -563,7 +626,6 @@ public class DataProvider<V> {
      * @param prepare PreparedStatement
      * @param entity  Entity from which will be read data
      * @param columns Bind columns
-     *
      * @return BoundStatement
      */
     @NotNull
@@ -586,9 +648,7 @@ public class DataProvider<V> {
      * Build entity metadata from entity class
      *
      * @param clazz Entity class
-     *
      * @return EntityMetadata
-     *
      * @throws MetadataException
      */
     private EntityMetadata build(Class<V> clazz) throws MetadataException {
@@ -602,80 +662,6 @@ public class DataProvider<V> {
         DATA_PROVIDER_FIND,
         DATA_PROVIDER_CREATE_KEY,
         DATA_PROVIDER_LOAD_BY_TOKEN_RANGE;
-    }
-
-    <Input> ListenableFuture<Boolean> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture) {
-        return monitorFuture(timer, listenableFuture, new Function<Input, Boolean>() {
-            @Override
-            public Boolean apply(Input input) {
-                return true;
-            }
-        });
-    }
-
-    List<V> fetch(List<Object> keys) {
-        List<V> result = new ArrayList<>();
-
-        fetch(keys, result::add);
-
-        return result;
-    }
-
-    Class<V> getEntityClass() {
-        return clazz;
-    }
-
-    /**
-     * Build hash code for entity
-     *
-     * @param entity Input entity
-     *
-     * @return Cache key
-     */
-    long buildHashCode(@NotNull V entity) {
-        Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
-
-        List<Object> keys = getPrimaryKeys(entity);
-
-        long hashCode = buildHashCode(keys);
-
-        timer.stop();
-
-        return hashCode;
-    }
-
-    @NotNull
-    List<Object> getPrimaryKeys(@NotNull V entity) {
-        int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
-
-        List<Object> keys = new ArrayList<>();
-
-        for (int i = 0; i < primaryKeysSize; i++) {
-            Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
-
-            if (primaryKey.isPresent()) {
-                PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
-
-                Object value = primaryKeyMetadata.readValue(entity);
-                keys.add(value);
-            }
-        }
-        return keys;
-    }
-
-    /**
-     * Build cache key
-     *
-     * @param keys Entity keys
-     *
-     * @return Cache key
-     */
-    final long buildHashCode(Object... keys) {
-        ArrayList<Object> keyList = new ArrayList<>();
-
-        Collections.addAll(keyList, keys);
-
-        return buildHashCode(keyList);
     }
 
 

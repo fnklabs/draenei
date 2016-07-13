@@ -10,7 +10,9 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.compute.ComputeJobResultPolicy;
 import org.apache.ignite.compute.ComputeTaskAdapter;
+import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.resources.IgniteInstanceResource;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,47 +22,50 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.*;
 
-public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, Integer> {
+/**
+ * Task for scanning dataprovider by token range
+ *
+ * @param <Entity>
+ */
+public abstract class RangeScanJobFactory<Entity, Key, Value> extends ComputeTaskAdapter<Object, Integer> {
 
     private static final MathContext MATH_CONTEXT = new MathContext(2, RoundingMode.HALF_EVEN);
+
+    private CacheConfiguration<Key, Value> cacheConfiguration;
 
     @IgniteInstanceResource
     private transient Ignite ignite;
 
     private int totalTasks;
 
+    public void setCacheConfiguration(CacheConfiguration<Key, Value> cacheConfiguration) {
+        this.cacheConfiguration = cacheConfiguration;
+    }
+
     @Nullable
     @Override
     public final Map<? extends RangeScanJob, ClusterNode> map(List<ClusterNode> subgrid, @Nullable Object arg) throws IgniteException {
-
         Map<RangeScanJob, ClusterNode> tasks = new HashMap<>();
 
         Map<Host, Set<TokenRange>> rangeScanTask = AnalyticsUtils.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient());
 
-
         rangeScanTask.forEach((host, tokenRanges) -> {
-
-            String hostAddress = host.getAddress()
-                                     .getHostAddress();
+            String hostAddress = host.getAddress().getHostAddress();
 
             Optional<ClusterNode> nearNode = subgrid.stream()
-                                                    .filter(node -> node.addresses()
-                                                                        .contains(hostAddress))
+                                                    .filter(node -> node.addresses().contains(hostAddress))
                                                     .findFirst();
 
+            ClusterNode clusterNode = nearNode.orElse(subgrid.stream().findAny().orElse(null));
 
-            ClusterNode clusterNode = nearNode.orElse(subgrid.stream()
-                                                             .findAny()
-                                                             .orElse(null));
-
-            getLogger().debug("Nearest node for cassandra host {} is {}", host.getAddress()
-                                                                              .getHostAddress(), clusterNode.addresses());
-
+            getLogger().debug(
+                    "Nearest node for cassandra host {} is {}",
+                    host.getAddress().getHostAddress(),
+                    clusterNode.addresses()
+            );
 
             tokenRanges.stream()
-                       .forEach(tokenRange -> {
-                           tasks.put(createMapper(tokenRange), clusterNode);
-                       });
+                       .forEach(tokenRange -> tasks.put(createJob(tokenRange, cacheConfiguration), clusterNode));
         });
 
         totalTasks = tasks.size();
@@ -78,7 +83,8 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
                     "Completed: {}/{} ({}%)",
                     rcvd.size(),
                     totalTasks,
-                    BigDecimal.valueOf(completedTasks).round(MATH_CONTEXT));
+                    BigDecimal.valueOf(completedTasks).round(MATH_CONTEXT)
+            );
         }
 
         return result;
@@ -107,7 +113,7 @@ public abstract class RangeScanTask<Entity> extends ComputeTaskAdapter<Object, I
         return ignite;
     }
 
-    protected abstract RangeScanJob createMapper(TokenRange tokenRange);
+    protected abstract RangeScanJob createJob(TokenRange tokenRange, CacheConfiguration<Key, Value> cacheConfiguration);
 
     protected abstract DataProvider<Entity> getDataProvider();
 

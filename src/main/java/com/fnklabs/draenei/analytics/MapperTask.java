@@ -7,21 +7,20 @@ import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.compute.ComputeJobAdapter;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.resources.IgniteInstanceResource;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.cache.Cache;
 
-public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter {
+public abstract class MapperTask<Key, Value, Output> extends ComputeJobAdapter {
     private final CacheConfiguration<Key, Value> cacheConfiguration;
 
     @IgniteInstanceResource
     private Ignite ignite;
 
-
-    protected CacheMapper(CacheConfiguration<Key, Value> cacheConfiguration) {
+    protected MapperTask(CacheConfiguration<Key, Value> cacheConfiguration) {
         this.cacheConfiguration = cacheConfiguration;
     }
-
 
     @Override
     public abstract Output execute() throws IgniteException;
@@ -29,11 +28,9 @@ public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter 
     protected Iterable<Cache.Entry<Key, Value>> getLocalEntries() {
         IgniteCache<Key, Value> cache = ignite.getOrCreateCache(cacheConfiguration);
 
-
         long offHeapAllocatedSize = cache.metrics().getOffHeapAllocatedSize();
 
-        LoggerFactory.getLogger(getClass()).debug("Allocated size: {}MB", offHeapAllocatedSize / 1024 / 1024);
-
+        getLogger().debug("Allocated size: {}MB", offHeapAllocatedSize / 1024 / 1024);
 
         return cache.localEntries(CachePeekMode.PRIMARY);
     }
@@ -46,6 +43,10 @@ public abstract class CacheMapper<Key, Value, Output> extends ComputeJobAdapter 
 
     protected Ignite getIgnite() {
         return ignite;
+    }
+
+    private Logger getLogger() {
+        return LoggerFactory.getLogger(getClass());
     }
 
 

@@ -52,11 +52,11 @@ public class CassandraClient {
     /**
      * Read timeout in ms
      */
-    private static final int READ_TIMEOUT = 15000;
+    private static final int READ_TIMEOUT = 60000;
     /**
      * Connection timeout in ms
      */
-    private static final int CONNECT_TIMEOUT_MILLIS = 30000;
+    private static final int CONNECT_TIMEOUT_MILLIS = 120000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CassandraClient.class);
 
