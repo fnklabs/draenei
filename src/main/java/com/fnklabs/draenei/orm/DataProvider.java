@@ -77,6 +77,7 @@ public class DataProvider<V> {
      * Save entity asynchronously
      *
      * @param entity Target entity
+     *
      * @return Operation status result
      */
     public ListenableFuture<Boolean> saveAsync(@NotNull V entity) {
@@ -113,6 +114,7 @@ public class DataProvider<V> {
      * Save entity asynchronously
      *
      * @param entity Target entity
+     *
      * @return Operation status result
      */
     public Boolean save(@NotNull V entity) {
@@ -147,6 +149,7 @@ public class DataProvider<V> {
      * Remove entity asynchronously
      *
      * @param entity Target entity
+     *
      * @return Operation status result
      */
     public ListenableFuture<Boolean> removeAsync(@NotNull V entity) {
@@ -210,6 +213,7 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
+     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public ListenableFuture<V> findOneAsync(Object... keys) {
@@ -226,6 +230,7 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
+     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public V findOne(Object... keys) {
@@ -242,6 +247,7 @@ public class DataProvider<V> {
      * Get record async by specified keys and send result to consumer
      *
      * @param keys Primary keys
+     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public ListenableFuture<List<V>> findAsync(Object... keys) {
@@ -262,6 +268,7 @@ public class DataProvider<V> {
      * Get records  by specified keys and send result to consumer
      *
      * @param keys Primary keys
+     *
      * @return True if result will be completed successfully and False if result will be completed with error
      */
     public List<V> find(Object... keys) {
@@ -322,8 +329,9 @@ public class DataProvider<V> {
 
         Timer executeTimer = getMetrics().getTimer("data_provider.load.execute");
 
-        BoundStatement boundStatement = new BoundStatement(prepare);
-        boundStatement.bind(start, end);
+        BoundStatement boundStatement = prepare.bind(start, end);
+        boundStatement.setConsistencyLevel(ConsistencyLevel.ONE);
+        boundStatement.setFetchSize(getEntityMetadata().getMaxFetchSize());
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
 
@@ -335,7 +343,7 @@ public class DataProvider<V> {
 
         timer.stop();
 
-        LOGGER.debug("Complete load data in range ({},{}] in {}", start, end, timer);
+        LOGGER.debug("Complete load data `{}` in range ({},{}] in {}", loadedItems, start, end, timer);
 
 
         return loadedItems;
@@ -366,6 +374,7 @@ public class DataProvider<V> {
      * Build hash code for entity
      *
      * @param entity Input entity
+     *
      * @return Cache key
      */
     long buildHashCode(@NotNull V entity) {
@@ -403,6 +412,7 @@ public class DataProvider<V> {
      * Build cache key
      *
      * @param keys Entity keys
+     *
      * @return Cache key
      */
     final long buildHashCode(Object... keys) {
@@ -427,6 +437,7 @@ public class DataProvider<V> {
      * Map row result to object
      *
      * @param row ResultSet row
+     *
      * @return Mapped object or null if can't map fields
      */
     @Nullable
@@ -442,6 +453,7 @@ public class DataProvider<V> {
      * @param userCallback     User callback that will be executed on Future success
      * @param <Input>          Future class type
      * @param <Output>         User callback output
+     *
      * @return Listenable future
      */
     private <Input, Output> ListenableFuture<Output> monitorFuture(Timer timer, ListenableFuture<Input> listenableFuture, Function<Input, Output> userCallback) {
@@ -626,6 +638,7 @@ public class DataProvider<V> {
      * @param prepare PreparedStatement
      * @param entity  Entity from which will be read data
      * @param columns Bind columns
+     *
      * @return BoundStatement
      */
     @NotNull
@@ -648,7 +661,9 @@ public class DataProvider<V> {
      * Build entity metadata from entity class
      *
      * @param clazz Entity class
+     *
      * @return EntityMetadata
+     *
      * @throws MetadataException
      */
     private EntityMetadata build(Class<V> clazz) throws MetadataException {
