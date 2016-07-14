@@ -66,7 +66,7 @@ public abstract class RangeScanJob<T, K, V> implements ComputeJob {
 
                 userCallBackTimer.stop();
 
-                getLogger().debug("Fetch row `{}` ({},{}] in {} and perform user_callback in {}", entries, start, end, timer, userCallBackTimer);
+//                getLogger().debug("Perform user_callback in {}", userCallBackTimer);
             });
 
 
