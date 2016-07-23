@@ -17,32 +17,30 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.cache.processor.EntryProcessorException;
-import javax.cache.processor.MutableEntry;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
 
 /**
  * Callable task for seeking over data
  *
- * @param <T> Entity data type
- * @param <K> Cache entry key
- * @param <V> Cache entry value
+ * @param <Entity>              Entity data type
+ * @param <OutputKey>           Cache entry key
+ * @param <OutputValue>         Cache entry value
+ * @param <CombinerOutputValue> Combiner value
  */
-public abstract class RangeScanJob<T, K, V> implements ComputeJob {
+public abstract class RangeScanJob<Entity, OutputKey, OutputValue, CombinerOutputValue> implements ComputeJob {
     private final long start;
     private final long end;
-    private final CacheConfiguration<K, V> cacheConfiguration;
+
+    private final CacheConfiguration<OutputKey, CombinerOutputValue> outputData;
 
     @IgniteInstanceResource
     private transient Ignite ignite;
 
-    public RangeScanJob(long start, long end, CacheConfiguration<K, V> cacheConfiguration) {
+    public RangeScanJob(long start, long end, CacheConfiguration<OutputKey, CombinerOutputValue> outputData) {
         this.start = start;
         this.end = end;
-        this.cacheConfiguration = cacheConfiguration;
+        this.outputData = outputData;
     }
-
 
     @Override
     public Integer execute() throws IgniteException {
@@ -51,24 +49,24 @@ public abstract class RangeScanJob<T, K, V> implements ComputeJob {
         AtomicInteger entries = new AtomicInteger();
 
         try {
-            IgniteCache<K, V> cache = ignite.getOrCreateCache(cacheConfiguration);
+            IgniteCache<OutputKey, CombinerOutputValue> cache = ignite.getOrCreateCache(outputData);
 
             Metrics metrics = MetricsFactory.getMetrics();
 
+            CacheEntryProcessor<OutputKey, CombinerOutputValue, CombinerOutputValue> dataCombiner = getDataCombiner();
+            Emitter<OutputKey, OutputValue, CombinerOutputValue> emitter = new Emitter<>(cache, dataCombiner);
+
             getDataProvider().load(start, end, entity -> {
                 Timer userCallBackTimer = metrics.getTimer("analytics.load_data.user_callback");
+
                 entries.incrementAndGet();
 
-
-                map(entity, (k, entryProcessor) -> {
-                    cache.invoke(k, entryProcessor, entity);
-                });
+                map(entity, emitter);
 
                 userCallBackTimer.stop();
 
 //                getLogger().debug("Perform user_callback in {}", userCallBackTimer);
             });
-
 
             return entries.intValue();
         } catch (RuntimeException e) {
@@ -96,20 +94,11 @@ public abstract class RangeScanJob<T, K, V> implements ComputeJob {
         return ignite;
     }
 
-    protected abstract DataProvider<T> getDataProvider();
+    protected abstract DataProvider<Entity> getDataProvider();
 
-    protected abstract void map(T entity, BiConsumer<K, CacheEntryProcessor<K, V, V>> consumer);
+    protected abstract void map(Entity entity, Emitter<OutputKey, OutputValue, CombinerOutputValue> emitter);
 
-    public static class PutProcessor<Key, Value> implements CacheEntryProcessor<Key, Value, Value> {
-        @Override
-        public Value process(MutableEntry<Key, Value> entry, Object... arguments) throws EntryProcessorException {
-
-            Value value = entry.getValue();
-
-            entry.setValue((Value) arguments[0]);
-
-            return value;
-        }
+    protected CacheEntryProcessor<OutputKey, CombinerOutputValue, CombinerOutputValue> getDataCombiner() {
+        return new PutToCacheCombiner<OutputKey, CombinerOutputValue>();
     }
-
 }

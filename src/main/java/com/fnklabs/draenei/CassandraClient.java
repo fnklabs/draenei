@@ -29,6 +29,7 @@ import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
 import com.google.common.base.Objects;
 import com.google.common.base.Verify;
+import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -38,11 +39,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.net.InetAddress;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -151,35 +149,19 @@ public class CassandraClient {
         }
     }
 
-    private static void debugClusterInfo(Metadata metadata) {
-        LOGGER.info(String.format("Connecting to cluster: %s", metadata.getClusterName()));
-
-        for (Host host : metadata.getAllHosts()) {
-            LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
-        }
-    }
-
-    public Map<TokenRange, Set<Host>> getTokenRangeOwners(String keyspace) {
-        Map<TokenRange, Set<Host>> tokenRangeOwners = new HashMap<>();
-
-        getMembers().stream()
-                    .forEach(host -> {
-                        Set<TokenRange> tokenRanges = getTokenRanges(host, keyspace);
-
-                        tokenRanges.stream()
-                                   .forEach(tokenRange -> {
-                                       tokenRangeOwners.compute(tokenRange, (s, hosts) -> {
-                                           if (hosts == null) {
-                                               hosts = new LinkedHashSet<Host>();
-                                           }
-                                           hosts.add(host);
-
-                                           return hosts;
-                                       });
-                                   });
-                    });
-
-        return tokenRangeOwners;
+    /**
+     * Get token ranges by host for keyspace
+     *
+     * @param keyspace Keyspace name
+     *
+     * @return TokenRanges by host
+     */
+    public Map<HostAndPort, Set<TokenRange>> getTokenRangesByHost(@NotNull String keyspace) {
+        return getMembers().stream()
+                           .collect(Collectors.toMap(host -> {
+                               InetAddress address = host.getAddress();
+                               return HostAndPort.fromHost(address.getHostAddress());
+                           }, host -> getTokenRanges(host, keyspace)));
     }
 
     @NotNull
@@ -187,6 +169,7 @@ public class CassandraClient {
         return getCluster().getMetadata().getKeyspace(keyspace);
     }
 
+    @NotNull
     public String getDefaultKeyspace() {
         return defaultKeyspace;
     }
@@ -231,7 +214,7 @@ public class CassandraClient {
      *
      * @return Result set
      */
-    public ResultSet execute(String keyspace, @NotNull String query) {
+    public ResultSet execute(@NotNull String keyspace, @NotNull String query) {
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT.name()).inc();
 
         Timer time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE.name());
@@ -382,14 +365,20 @@ public class CassandraClient {
         return new TokenAwarePolicy(roundRobinPolicy);
     }
 
+    /**
+     * Get keyspace token ranges that belongs to provided host
+     *
+     * @param host     Host
+     * @param keyspace Keyspace
+     *
+     * @return Set of token ranges
+     */
     private Set<TokenRange> getTokenRanges(Host host, String keyspace) {
-        Metadata metadata = cluster.getMetadata();
-
-        Set<TokenRange> ranges = metadata.getTokenRanges(keyspace, host);
-
-        return ranges.stream()
-                     .flatMap(range -> range.unwrap().stream())
-                     .collect(Collectors.toSet());
+        return getCluster().getMetadata()
+                           .getTokenRanges(keyspace, host)
+                           .stream()
+                           .flatMap(range -> range.unwrap().stream())
+                           .collect(Collectors.toSet());
     }
 
     private <T> void monitorFuture(@NotNull Timer timer, @NotNull ListenableFuture<T> future) {
@@ -439,6 +428,14 @@ public class CassandraClient {
         return currentSession;
     }
 
+    private static void debugClusterInfo(Metadata metadata) {
+        LOGGER.info(String.format("Connecting to cluster: %s", metadata.getClusterName()));
+
+        for (Host host : metadata.getAllHosts()) {
+            LOGGER.info(String.format("DataCenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getAddress(), host.getRack()));
+        }
+    }
+
     private enum MetricsType {
         CASSANDRA_EXECUTE,
         CASSANDRA_QUERIES_COUNT,
@@ -458,14 +455,14 @@ public class CassandraClient {
 
         @Override
         public int hashCode() {
-            return Objects.hashCode(keyspace, query);
+            return Objects.hashCode(getKeyspace(), getQuery());
         }
 
-        public String getKeyspace() {
+        String getKeyspace() {
             return keyspace;
         }
 
-        public String getQuery() {
+        String getQuery() {
             return query;
         }
 

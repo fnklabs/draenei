@@ -1,9 +1,9 @@
 package com.fnklabs.draenei.analytics;
 
-import com.datastax.driver.core.Host;
 import com.datastax.driver.core.TokenRange;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.orm.DataProvider;
+import com.google.common.net.HostAndPort;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterNode;
@@ -12,7 +12,6 @@ import org.apache.ignite.compute.ComputeJobResultPolicy;
 import org.apache.ignite.compute.ComputeTaskAdapter;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.resources.IgniteInstanceResource;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,56 +20,62 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Task for scanning dataprovider by token range
  *
  * @param <Entity>
  */
-public abstract class RangeScanJobFactory<Entity, Key, Value> extends ComputeTaskAdapter<Object, Integer> {
+public abstract class RangeScanJobFactory<Entity, Key, Value, CombinerOutputValue> extends ComputeTaskAdapter<CacheConfiguration<Key, CombinerOutputValue>, Integer> {
 
     private static final MathContext MATH_CONTEXT = new MathContext(2, RoundingMode.HALF_EVEN);
 
-    private CacheConfiguration<Key, Value> cacheConfiguration;
 
     @IgniteInstanceResource
     private transient Ignite ignite;
 
     private int totalTasks;
 
-    public void setCacheConfiguration(CacheConfiguration<Key, Value> cacheConfiguration) {
-        this.cacheConfiguration = cacheConfiguration;
-    }
-
     @Nullable
     @Override
-    public final Map<? extends RangeScanJob, ClusterNode> map(List<ClusterNode> subgrid, @Nullable Object arg) throws IgniteException {
-        Map<RangeScanJob, ClusterNode> tasks = new HashMap<>();
+    public final Map<? extends RangeScanJob, ClusterNode> map(List<ClusterNode> subgrid, @Nullable CacheConfiguration<Key, CombinerOutputValue> cacheConfiguration) throws IgniteException {
+        Map<HostAndPort, Set<TokenRange>> rangeScanTask = AnalyticsContext.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient());
 
-        Map<Host, Set<TokenRange>> rangeScanTask = AnalyticsUtils.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient());
+        Map<RangeScanJob, ClusterNode> jobs = rangeScanTask.entrySet()
+                                                           .stream()
+                                                           .flatMap(entry -> entry.getValue().stream())
+                                                           .collect(
+                                                                   Collectors.toMap(
+                                                                           tokenRange -> createJob(tokenRange, cacheConfiguration),
+                                                                           tokenRange -> {
+                                                                               Optional<HostAndPort> first = rangeScanTask.entrySet()
+                                                                                                                          .stream()
+                                                                                                                          .filter(entry -> entry.getValue().contains(tokenRange))
+                                                                                                                          .map(Map.Entry::getKey)
+                                                                                                                          .findFirst();
 
-        rangeScanTask.forEach((host, tokenRanges) -> {
-            String hostAddress = host.getAddress().getHostAddress();
+                                                                               ClusterNode clusterNode = first.flatMap(host -> subgrid.stream()
+                                                                                                                                      .filter(node -> node.addresses()
+                                                                                                                                                          .contains(host.getHostText()))
+                                                                                                                                      .findFirst())
+                                                                                                              .orElse(subgrid.stream().findAny().orElse(null));
 
-            Optional<ClusterNode> nearNode = subgrid.stream()
-                                                    .filter(node -> node.addresses().contains(hostAddress))
-                                                    .findFirst();
+                                                                               getLogger().debug(
+                                                                                       "Nearest node for cassandra host {} is {}",
+                                                                                       first.orElse(null),
+                                                                                       clusterNode.addresses()
+                                                                               );
 
-            ClusterNode clusterNode = nearNode.orElse(subgrid.stream().findAny().orElse(null));
+                                                                               return clusterNode;
+                                                                           }
+                                                                   )
+                                                           );
 
-            getLogger().debug(
-                    "Nearest node for cassandra host {} is {}",
-                    host.getAddress().getHostAddress(),
-                    clusterNode.addresses()
-            );
 
-            tokenRanges.stream()
-                       .forEach(tokenRange -> tasks.put(createJob(tokenRange, cacheConfiguration), clusterNode));
-        });
+        totalTasks = jobs.size();
 
-        totalTasks = tasks.size();
-
-        return tasks;
+        return jobs;
     }
 
     @Override
@@ -113,7 +118,7 @@ public abstract class RangeScanJobFactory<Entity, Key, Value> extends ComputeTas
         return ignite;
     }
 
-    protected abstract RangeScanJob createJob(TokenRange tokenRange, CacheConfiguration<Key, Value> cacheConfiguration);
+    protected abstract RangeScanJob<Entity, Key, Value, CombinerOutputValue> createJob(TokenRange tokenRange, CacheConfiguration<Key, CombinerOutputValue> cacheConfiguration);
 
     protected abstract DataProvider<Entity> getDataProvider();
 

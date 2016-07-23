@@ -51,7 +51,7 @@ public class DataProvider<V> {
     @NotNull
     private final EntityMetadata entityMetadata;
     @NotNull
-    private final CassandraClientFactory cassandraClient;
+    private final CassandraClient cassandraClient;
     @NotNull
     private final Function<Row, V> mapToObjectFunction;
 
@@ -61,13 +61,13 @@ public class DataProvider<V> {
     /**
      * Construct provider
      *
-     * @param clazz                  Entity class
-     * @param cassandraClientFactory CassandraClientFactory instance
-     * @param executorService        ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
+     * @param clazz           Entity class
+     * @param cassandraClient CassandraClient instance
+     * @param executorService ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
      */
-    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClientFactory cassandraClientFactory, @NotNull ExecutorService executorService) {
+    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClient cassandraClient, @NotNull ExecutorService executorService) {
         this.clazz = clazz;
-        this.cassandraClient = cassandraClientFactory;
+        this.cassandraClient = cassandraClient;
         this.executorService = executorService;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
@@ -428,11 +428,6 @@ public class DataProvider<V> {
         return METRICS;
     }
 
-    @NotNull
-    protected CassandraClient getCassandraClient() {
-        return cassandraClient.create();
-    }
-
     /**
      * Map row result to object
      *
@@ -443,6 +438,11 @@ public class DataProvider<V> {
     @Nullable
     protected V mapToObject(@NotNull Row row) {
         return mapToObjectFunction.apply(row);
+    }
+
+    @NotNull
+    private CassandraClient getCassandraClient() {
+        return cassandraClient;
     }
 
     /**

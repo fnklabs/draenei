@@ -1,6 +1,7 @@
 package com.fnklabs.draenei.orm;
 
 
+import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.metrics.Timer;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -39,10 +40,10 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     private final IgniteCache<Long, Entry> cache;
 
     public CacheableDataProvider(@NotNull Class<Entry> clazz,
-                                 @NotNull CassandraClientFactory cassandraClientFactory,
+                                 @NotNull CassandraClient cassandraClient,
                                  @NotNull Ignite ignite,
                                  @NotNull ExecutorService executorService) {
-        super(clazz, cassandraClientFactory, executorService);
+        super(clazz, cassandraClient, executorService);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
@@ -201,10 +202,12 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     private void initializeEventListener(@NotNull Ignite ignite) {
         ignite.events()
-              .localListen(new LocalCacheEventListener(),
+              .localListen(
+                      new LocalCacheEventListener(),
                       EventType.EVT_CACHE_OBJECT_EXPIRED,
                       EventType.EVT_CACHE_OBJECT_PUT,
-                      EventType.EVT_CACHE_OBJECT_REMOVED);
+                      EventType.EVT_CACHE_OBJECT_REMOVED
+              );
     }
 
     private enum MetricsType {

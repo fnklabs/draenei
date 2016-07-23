@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
  * Cache utils
  */
 class CacheUtils {
+
     /**
      * Return cache name for specified entity class
      *
@@ -30,7 +31,7 @@ class CacheUtils {
      */
     private static <Key, Entry> CacheConfiguration<Key, Entry> getDefaultCacheConfiguration(String cacheName) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
-        cacheCfg.setBackups(0);
+        cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setReadThrough(false);

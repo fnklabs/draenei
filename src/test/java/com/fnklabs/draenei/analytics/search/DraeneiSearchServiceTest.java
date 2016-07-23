@@ -4,6 +4,7 @@ import com.fnklabs.draenei.IgniteTest;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cluster.ClusterGroup;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -55,6 +56,10 @@ public class DraeneiSearchServiceTest {
         }
     }
 
+    @After
+    public void tearDown() throws Exception {
+        ignite.close();
+    }
 
     @Test
     public void testSearch() throws UnknownHostException {

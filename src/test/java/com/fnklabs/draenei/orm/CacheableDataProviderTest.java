@@ -45,12 +45,7 @@ public class CacheableDataProviderTest {
 
     @Test
     public void testFindOneAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, new CassandraClientFactory() {
-            @Override
-            public CassandraClient create() {
-                return cassandraClient;
-            }
-        }, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
 
         ListenableFuture<TestEntity> oneAsync = cacheableDataProvider.findOneAsync(UUID.randomUUID());
 
@@ -74,12 +69,7 @@ public class CacheableDataProviderTest {
 
     @Test
     public void testSaveAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, new CassandraClientFactory() {
-            @Override
-            public CassandraClient create() {
-                return cassandraClient;
-            }
-        }, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
 
 
         TestEntity testEntity = new TestEntity();
@@ -99,12 +89,7 @@ public class CacheableDataProviderTest {
 
     @Test
     public void testRemoveAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, new CassandraClientFactory() {
-            @Override
-            public CassandraClient create() {
-                return cassandraClient;
-            }
-        }, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
 
 
         TestEntity testEntity = new TestEntity();
