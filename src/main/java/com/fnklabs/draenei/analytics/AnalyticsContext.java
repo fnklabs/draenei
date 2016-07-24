@@ -60,7 +60,7 @@ public class AnalyticsContext {
      */
     public static <Key, Entry> CacheConfiguration<Key, Entry> getCacheConfiguration(String cacheName) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
-        cacheCfg.setBackups(1);
+        cacheCfg.setBackups(0);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
         cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
         cacheCfg.setReadThrough(false);
