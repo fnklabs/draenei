@@ -86,7 +86,7 @@ public class AnalyticsContext {
                                                                   .stream()
                                                                   .collect(Collectors.toMap(
                                                                           Map.Entry::getKey,
-                                                                          entry -> entry.getValue().stream().limit(1).collect(Collectors.toSet())
+                                                                          Map.Entry::getValue
                                                                   ));
 
         LOGGER.debug("Split result: {}", result);
