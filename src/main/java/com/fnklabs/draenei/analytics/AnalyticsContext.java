@@ -191,12 +191,7 @@ public class AnalyticsContext {
         return ignite;
     }
 
-    @NotNull
-    private CassandraClient getCassandraClient() {
-        return cassandraClientFactory;
-    }
-
-    private <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> Long map(
+    public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> Long map(
             @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
             @NotNull CacheConfiguration<OutputKey, CombinerValue> outputDataConfig,
             @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
@@ -217,6 +212,66 @@ public class AnalyticsContext {
         }
     }
 
+
+    public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> IgniteCache<OutputKey, CombinerValue> map(
+            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
+            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
+    ) {
+
+        CacheConfiguration<OutputKey, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(mapFactory.getClass()));
+
+        map(inputDataConfig, cacheConfiguration, mapFactory);
+
+        return getIgnite().getOrCreateCache(cacheConfiguration);
+    }
+
+    /**
+     * Scan storage
+     * <p>
+     * Will generate token range and execute tasks to load data from cassandra by token range
+     *
+     * @param <Entity> Entity class type
+     *
+     * @return Total processed entities
+     */
+    @NotNull
+    public <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory) {
+        CacheConfiguration<Key, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(rangeScanJobFactory));
+
+        return scanStorage(rangeScanJobFactory, cacheConfiguration);
+    }
+
+    /**
+     * Scan storage
+     * <p>
+     * Will generate token range and execute tasks to load data from cassandra by token range
+     *
+     * @param <Entity> Entity class type
+     *
+     * @return Total processed entities
+     */
+    @NotNull
+    public <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory,
+                                                                                                  @NotNull CacheConfiguration<Key, CombinerValue> cacheConfiguration) {
+        Timer timer = MetricsFactory.getMetrics().getTimer("analytics.scan_storage");
+
+        ClusterGroup clusterGroup = getServers();
+
+        Integer loadedDocuments = getIgnite().compute(clusterGroup)
+                                             .execute(rangeScanJobFactory, cacheConfiguration);
+
+        timer.stop();
+
+        LOGGER.warn("Complete to scan storage data in {}. Processed items: {} ", timer, loadedDocuments);
+
+        return cacheConfiguration;
+    }
+
+    @NotNull
+    private CassandraClient getCassandraClient() {
+        return cassandraClientFactory;
+    }
+
     private <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> void reduce(
             @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
             @NotNull CacheConfiguration<OutputKey, CombinerValue> outputDataConfig,
@@ -233,48 +288,6 @@ public class AnalyticsContext {
         } finally {
             timer.stop();
         }
-    }
-
-    /**
-     * Scan storage
-     * <p>
-     * Will generate token range and execute tasks to load data from cassandra by token range
-     *
-     * @param <Entity> Entity class type
-     *
-     * @return Total processed entities
-     */
-    @NotNull
-    private <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory) {
-        CacheConfiguration<Key, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(rangeScanJobFactory));
-
-        return scanStorage(rangeScanJobFactory, cacheConfiguration);
-    }
-
-    /**
-     * Scan storage
-     * <p>
-     * Will generate token range and execute tasks to load data from cassandra by token range
-     *
-     * @param <Entity> Entity class type
-     *
-     * @return Total processed entities
-     */
-    @NotNull
-    private <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory,
-                                                                                                   @NotNull CacheConfiguration<Key, CombinerValue> cacheConfiguration) {
-        Timer timer = MetricsFactory.getMetrics().getTimer("analytics.scan_storage");
-
-        ClusterGroup clusterGroup = getServers();
-
-        Integer loadedDocuments = getIgnite().compute(clusterGroup)
-                                             .execute(rangeScanJobFactory, cacheConfiguration);
-
-        timer.stop();
-
-        LOGGER.warn("Complete to scan storage data in {}. Processed items: {} ", timer, loadedDocuments);
-
-        return cacheConfiguration;
     }
 
     private ClusterGroup getServers() {
