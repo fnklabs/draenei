@@ -25,6 +25,7 @@ import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.multicast.TcpDiscoveryMulticastIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.apache.ignite.spi.swapspace.file.FileSwapSpaceSpi;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -59,6 +60,7 @@ public class IgniteTest implements Serializable {
         cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
         cfg.setUserAttributes(userProperties);
         cfg.setMarshaller(new OptimizedMarshaller(false));
+        cfg.setSwapSpaceSpi(new FileSwapSpaceSpi());
 
 
 //        cfg.setPublicThreadPoolSize(8);
@@ -107,13 +109,14 @@ public class IgniteTest implements Serializable {
         Ignite secondIgnite = Ignition.start(getIgniteConfiguration());
 
         firstIgnite.events()
-                   .localListen(new IgnitePredicate<Event>() {
-                                    @Override
-                                    public boolean apply(Event event) {
-                                        LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
-                                        return true;
-                                    }
-                                },
+                   .localListen(
+                           new IgnitePredicate<Event>() {
+                               @Override
+                               public boolean apply(Event event) {
+                                   LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
+                                   return true;
+                               }
+                           },
                            EventType.EVT_CACHE_ENTRY_CREATED,
                            EventType.EVT_CACHE_ENTRY_DESTROYED,
                            EventType.EVT_CACHE_ENTRY_EVICTED,
@@ -122,13 +125,14 @@ public class IgniteTest implements Serializable {
                            EventType.EVT_CACHE_OBJECT_EXPIRED
                    );
         secondIgnite.events()
-                    .localListen(new IgnitePredicate<Event>() {
-                                     @Override
-                                     public boolean apply(Event event) {
-                                         LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
-                                         return true;
-                                     }
-                                 },
+                    .localListen(
+                            new IgnitePredicate<Event>() {
+                                @Override
+                                public boolean apply(Event event) {
+                                    LoggerFactory.getLogger(getClass()).debug("Event: {}", event);
+                                    return true;
+                                }
+                            },
                             EventType.EVT_CACHE_ENTRY_CREATED,
                             EventType.EVT_CACHE_ENTRY_DESTROYED,
                             EventType.EVT_CACHE_ENTRY_EVICTED,
@@ -189,7 +193,7 @@ public class IgniteTest implements Serializable {
 
         // Callback that is called locally when update notifications are received.
         qry.setLocalListener((evts) ->
-                evts.forEach(e -> System.out.println("key=" + e.getKey() + ", val=" + e.getValue())));
+                                     evts.forEach(e -> System.out.println("key=" + e.getKey() + ", val=" + e.getValue())));
 
         // This filter will be evaluated remotely on all nodes.
         // Entry that pass this filter will be sent to the caller.
@@ -272,7 +276,7 @@ public class IgniteTest implements Serializable {
         return cacheCfg;
     }
 
-    enum TestEnum{
+    enum TestEnum {
 
     }
 
