@@ -156,12 +156,28 @@ public class CassandraClient {
      *
      * @return TokenRanges by host
      */
-    public Map<HostAndPort, Set<TokenRange>> getTokenRangesByHost(@NotNull String keyspace) {
-        return getMembers().stream()
-                           .collect(Collectors.toMap(host -> {
-                               InetAddress address = host.getAddress();
-                               return HostAndPort.fromHost(address.getHostAddress());
-                           }, host -> getTokenRanges(host, keyspace)));
+    public Map<TokenRange, Set<HostAndPort>> getTokensOwner(@NotNull String keyspace) {
+        Map<TokenRange, Set<HostAndPort>> tokenRanges = new HashMap<>();
+
+        for (Host host : getMembers()) {
+            Set<TokenRange> tokensRange = getTokenRanges(host, keyspace);
+
+            tokensRange.forEach(tokenRange -> {
+                tokenRanges.compute(tokenRange, (key, value) -> {
+                    if (value == null) {
+                        value = new HashSet<>();
+                    }
+
+                    value.add(HostAndPort.fromHost(host.getAddress().getHostAddress()));
+
+                    return value;
+                });
+            });
+        }
+
+        LOGGER.debug("Token ranges by host: {}", tokenRanges);
+
+        return tokenRanges;
     }
 
     @NotNull
@@ -233,7 +249,15 @@ public class CassandraClient {
      * @return Execution result set
      */
     public ResultSet execute(@NotNull Statement statement) {
-        return execute(defaultKeyspace, statement);
+        Timer executeTimer = MetricsFactory.getMetrics().getTimer("cassandra.execute");
+
+        try {
+            return execute(defaultKeyspace, statement);
+        } finally {
+            executeTimer.stop();
+
+            LOGGER.debug("Complete to execute stmt `{}` in {}", statement.toString(), executeTimer);
+        }
     }
 
     /**
@@ -493,6 +517,8 @@ public class CassandraClient {
                 throw e;
             } finally {
                 timer.stop();
+
+                LOGGER.debug("Complete to prepare `{}` stmt in {}", sessionQuery.getQuery(), timer);
             }
         }
     }

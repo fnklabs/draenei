@@ -319,15 +319,7 @@ public class DataProvider<V> {
                                     .setFetchSize(getEntityMetadata().getMaxFetchSize());
 
 
-        Timer prepareTimer = getMetrics().getTimer("data_provider.load.prepare");
-
         PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), statement.toString());
-
-        prepareTimer.stop();
-
-        LOGGER.debug("Complete to prepare `{}` stmt in {}", prepare.getQueryString(), prepareTimer);
-
-        Timer executeTimer = getMetrics().getTimer("data_provider.load.execute");
 
         BoundStatement boundStatement = prepare.bind(start, end);
         boundStatement.setConsistencyLevel(ConsistencyLevel.ONE);
@@ -335,16 +327,11 @@ public class DataProvider<V> {
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
 
-        executeTimer.stop();
-
-        LOGGER.debug("Complete to execute stmt in {}", executeTimer);
-
         int loadedItems = fetchResultSet(resultSet, consumer);
 
         timer.stop();
 
         LOGGER.debug("Complete load data `{}` in range ({},{}] in {}", loadedItems, start, end, timer);
-
 
         return loadedItems;
     }
@@ -489,21 +476,14 @@ public class DataProvider<V> {
     }
 
     private int fetchResultSet(ResultSet resultSet, Consumer<V> consumer) {
-        Iterator<Row> iterator = resultSet.iterator();
-
         int loadedItems = 0;
 
         Timer fetchResultSetTimer = getMetrics().getTimer("data_provider.load.fetch");
 
-        while (iterator.hasNext()) {
-            if (resultSet.getAvailableWithoutFetching() == entityMetadata.getMaxFetchSize() && !resultSet.isFullyFetched())
-                resultSet.fetchMoreResults();
-
+        for (Row row : resultSet) {
             METRICS.getCounter(MetricsType.DATA_PROVIDER_LOAD_BY_TOKEN_RANGE.name()).inc();
 
-            Row next = iterator.next();
-
-            V instance = mapToObject(next);
+            V instance = mapToObject(row);
 
             if (instance != null) {
                 consumer.accept(instance);
@@ -514,8 +494,7 @@ public class DataProvider<V> {
 
         fetchResultSetTimer.stop();
 
-        LOGGER.debug("Complete map to fetch data in {}", fetchResultSetTimer);
-//        LOGGER.debug("Loaded items: {}", loadedItems);
+        LOGGER.debug("Complete to map `{}` items from ResultSet in {}", loadedItems, fetchResultSetTimer);
 
         return loadedItems;
     }

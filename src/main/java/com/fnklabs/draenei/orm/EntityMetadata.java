@@ -21,6 +21,7 @@ import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -57,6 +58,8 @@ class EntityMetadata {
     @NotNull
     private final HashMap<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
 
+    private final List<ColumnMetadata> fieldMetadata;
+
     private EntityMetadata(@NotNull String tableName,
                            @NotNull String keyspace, boolean compactStorage,
                            int maxFetchSize,
@@ -70,109 +73,11 @@ class EntityMetadata {
         this.readConsistencyLevel = readConsistencyLevel;
         this.writeConsistencyLevel = writeConsistencyLevel;
         this.tableMetadata = tableMetadata;
-    }
 
-    protected boolean isCompactStorage() {
-        return compactStorage;
-    }
-
-    protected int getClusteringKeysSize() {
-        return tableMetadata.getClusteringColumns().size();
-    }
-
-    private void addColumnMetadata(@NotNull ColumnMetadata columnMetadata) {
-        columnsMetadata.put(columnMetadata.getName(), columnMetadata);
-
-        if (columnMetadata instanceof PrimaryKeyMetadata) {
-            PrimaryKeyMetadata primaryKeyMetadata = (PrimaryKeyMetadata) columnMetadata;
-            primaryKeys.put(primaryKeyMetadata.getOrder(), primaryKeyMetadata);
-        }
-    }
-
-    /**
-     * Validate entity metadata
-     *
-     * @param entityMetadata Entity Metadata instance
-     *
-     * @throws MetadataException if invalid metadada was provided
-     */
-    private static void validate(@NotNull EntityMetadata entityMetadata) {
-        if (StringUtils.isEmpty(entityMetadata.getTableName())) {
-            throw new MetadataException(String.format("Invalid table name: \"%s\"", entityMetadata.getTableName()));
-        }
-
-        if (entityMetadata.getPartitionKeySize() < 1) {
-            throw new MetadataException(String.format("Entity \"%s\"must contains primary key", entityMetadata.getTableName()));
-        }
-    }
-
-    private static String getColumnName(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Column columnAnnotation) {
-        String columnName = columnAnnotation.name();
-
-        if (StringUtils.isEmpty(columnName)) {
-            columnName = propertyDescriptor.getName();
-        }
-
-        return columnName;
-    }
-
-    @NotNull
-    String getKeyspace() {
-        return keyspace;
-    }
-
-    int getPartitionKeySize() {
-        return columnsMetadata.entrySet()
-                              .stream()
-                              .mapToInt(entry -> entry.getValue() instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) entry.getValue()).isPartitionKey() ? 1 : 0)
-                              .sum();
-    }
-
-    Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
-        return Optional.ofNullable(primaryKeys.get(oder));
-    }
-
-    /**
-     * Get field metadata
-     *
-     * @return
-     */
-    List<ColumnMetadata> getFieldMetaData() {
-        return columnsMetadata.entrySet()
-                              .stream()
-                              .map(entry -> entry.getValue())
-                              .collect(Collectors.toList());
-    }
-
-    @NotNull
-    String getTableName() {
-        return tableName;
-    }
-
-    int getMaxFetchSize() {
-        return maxFetchSize;
-    }
-
-    int getMinPrimaryKeys() {
-        if (getPartitionKeySize() > 0) {
-            return getPartitionKeySize();
-        }
-
-        return 1;
-    }
-
-    int getPrimaryKeysSize() {
-        return tableMetadata.getPrimaryKey().size();
-    }
-
-    @NotNull
-    ConsistencyLevel getWriteConsistencyLevel() {
-        return writeConsistencyLevel;
-    }
-
-    @NotNull
-    ConsistencyLevel getReadConsistencyLevel() {
-        return readConsistencyLevel;
+        this.fieldMetadata = columnsMetadata.entrySet()
+                                            .stream()
+                                            .map(Map.Entry::getValue)
+                                            .collect(Collectors.toList());
     }
 
     /**
@@ -336,5 +241,115 @@ class EntityMetadata {
         }
 
         return null;
+    }
+
+    @NotNull
+    String getKeyspace() {
+        return keyspace;
+    }
+
+    int getPartitionKeySize() {
+        return columnsMetadata.entrySet()
+                              .stream()
+                              .mapToInt(entry -> entry.getValue() instanceof PrimaryKeyMetadata && ((PrimaryKeyMetadata) entry.getValue()).isPartitionKey() ? 1 : 0)
+                              .sum();
+    }
+
+    Optional<PrimaryKeyMetadata> getPrimaryKey(int oder) {
+        return Optional.ofNullable(primaryKeys.get(oder));
+    }
+
+    /**
+     * Get field metadata
+     *
+     * @return
+     */
+    List<ColumnMetadata> getFieldMetaData() {
+        return fieldMetadata;
+    }
+
+    @NotNull
+    public HashMap<String, ColumnMetadata> getColumnsMetadata() {
+        return columnsMetadata;
+    }
+
+    @NotNull
+    String getTableName() {
+        return tableName;
+    }
+
+    int getMaxFetchSize() {
+        return maxFetchSize;
+    }
+
+    int getMinPrimaryKeys() {
+        if (getPartitionKeySize() > 0) {
+            return getPartitionKeySize();
+        }
+
+        return 1;
+    }
+
+    int getPrimaryKeysSize() {
+        return tableMetadata.getPrimaryKey().size();
+    }
+
+    @NotNull
+    ConsistencyLevel getWriteConsistencyLevel() {
+        return writeConsistencyLevel;
+    }
+
+    @NotNull
+    ConsistencyLevel getReadConsistencyLevel() {
+        return readConsistencyLevel;
+    }
+
+    @Nullable
+    public ColumnMetadata getColumn(String name) {
+        return columnsMetadata.get(name);
+    }
+
+    protected boolean isCompactStorage() {
+        return compactStorage;
+    }
+
+    protected int getClusteringKeysSize() {
+        return tableMetadata.getClusteringColumns().size();
+    }
+
+    private void addColumnMetadata(@NotNull ColumnMetadata columnMetadata) {
+        columnsMetadata.put(columnMetadata.getName(), columnMetadata);
+
+        if (columnMetadata instanceof PrimaryKeyMetadata) {
+            PrimaryKeyMetadata primaryKeyMetadata = (PrimaryKeyMetadata) columnMetadata;
+            primaryKeys.put(primaryKeyMetadata.getOrder(), primaryKeyMetadata);
+        }
+    }
+
+    /**
+     * Validate entity metadata
+     *
+     * @param entityMetadata Entity Metadata instance
+     *
+     * @throws MetadataException if invalid metadada was provided
+     */
+    private static void validate(@NotNull EntityMetadata entityMetadata) {
+        if (StringUtils.isEmpty(entityMetadata.getTableName())) {
+            throw new MetadataException(String.format("Invalid table name: \"%s\"", entityMetadata.getTableName()));
+        }
+
+        if (entityMetadata.getPartitionKeySize() < 1) {
+            throw new MetadataException(String.format("Entity \"%s\"must contains primary key", entityMetadata.getTableName()));
+        }
+    }
+
+    private static String getColumnName(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Column columnAnnotation) {
+        String columnName = columnAnnotation.name();
+
+        if (StringUtils.isEmpty(columnName)) {
+            columnName = propertyDescriptor.getName();
+        }
+
+        return columnName;
     }
 }

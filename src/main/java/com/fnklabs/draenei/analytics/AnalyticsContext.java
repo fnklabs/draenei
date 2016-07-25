@@ -4,6 +4,7 @@ import com.datastax.driver.core.TokenRange;
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
+import com.google.common.base.Verify;
 import com.google.common.net.HostAndPort;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -13,15 +14,16 @@ import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cluster.ClusterGroup;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 
 /**
  * Analytics context provide basic analytics functionality
@@ -68,7 +70,7 @@ public class AnalyticsContext {
         cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(1000));
         cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(1L * 1024L * 1024L * 1024L);
+        cacheCfg.setOffHeapMaxMemory(4L * 1024L * 1024L * 1024L);
         return cacheCfg;
     }
 
@@ -80,18 +82,60 @@ public class AnalyticsContext {
      *
      * @return Map of cassandra hosts and owned token ranges
      */
-    static Map<HostAndPort, Set<TokenRange>> splitRangeScanTask(@NotNull String keyspace, @NotNull CassandraClient cassandraClient) {
-        Map<HostAndPort, Set<TokenRange>> result = cassandraClient.getTokenRangesByHost(keyspace)
-                                                                  .entrySet()
-                                                                  .stream()
-                                                                  .collect(Collectors.toMap(
-                                                                          Map.Entry::getKey,
-                                                                          Map.Entry::getValue
-                                                                  ));
+    public static Map<TokenRange, ClusterNode> splitRangeScanTask(@NotNull String keyspace, @NotNull CassandraClient cassandraClient, @NotNull List<ClusterNode> subgrid) {
+        Map<HostAndPort, Integer> dataOwnerStatistic = new HashMap<>();
 
-        LOGGER.debug("Split result: {}", result);
+        Map<TokenRange, ClusterNode> result = cassandraClient.getTokensOwner(keyspace)
+                                                             .entrySet()
+                                                             .stream()
+                                                             .collect(
+                                                                     Collectors.toMap(
+                                                                             Map.Entry::getKey,
+                                                                             entry -> {
+
+                                                                                 ClusterNode clusterNode = getLessLoadedNode(subgrid, dataOwnerStatistic, entry.getValue());
+
+                                                                                 LOGGER.debug(
+                                                                                         "Nearest node for {} is {}",
+                                                                                         entry,
+                                                                                         clusterNode.addresses()
+                                                                                 );
+
+                                                                                 return clusterNode;
+                                                                             }
+                                                                     )
+                                                             );
+        LOGGER.debug("Split result: {} Stat", result, dataOwnerStatistic);
+
 
         return result;
+    }
+
+    protected static ClusterNode getLessLoadedNode(@NotNull List<ClusterNode> subgrid,
+                                                   @NotNull Map<HostAndPort, Integer> dataOwnerStatistic,
+                                                   @NotNull Set<HostAndPort> dataOwner) {
+        Verify.verify(!subgrid.isEmpty(), "Subgrid can't be empty");
+        Verify.verify(!dataOwner.isEmpty(), "Cassandra nodes collection can't be empty");
+
+        Optional<HostAndPort> lessLoadedDataNode = dataOwner.stream()
+                                                            .sorted((left, right) -> {
+                                                                return Integer.compare(dataOwnerStatistic.getOrDefault(left, 0), dataOwnerStatistic.getOrDefault(right, 0));
+                                                            })
+                                                            .limit(1)
+                                                            .findFirst();
+
+        //  Update statistic
+        lessLoadedDataNode.ifPresent(host -> {
+            dataOwnerStatistic.compute(host, (key, value) -> value == null ? 1 : value + 1);
+        });
+
+        Optional<ClusterNode> clusterNode = lessLoadedDataNode.flatMap(host -> {
+            return subgrid.stream()
+                          .filter(node -> node.addresses().contains(host.getHostText()))
+                          .findFirst();
+        });
+
+        return clusterNode.orElse(subgrid.stream().findAny().get());
     }
 
     /**

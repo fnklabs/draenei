@@ -1,11 +1,17 @@
 package com.fnklabs.draenei.orm;
 
+import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.Row;
+import com.fnklabs.metrics.MetricsFactory;
+import com.fnklabs.metrics.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
+import java.sql.Time;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -26,27 +32,29 @@ class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
 
     @Override
     public ReturnValue apply(Row row) {
-        ReturnValue instance = null;
-
+        Timer timer = MetricsFactory.getMetrics().getTimer("dataprovider.map_to_object");
         try {
-            instance = clazz.newInstance();
+            ReturnValue instance = clazz.newInstance();
 
-            List<ColumnMetadata> columns = entityMetadata.getFieldMetaData();
+            for (ColumnDefinitions.Definition column : row.getColumnDefinitions()) {
+                ColumnMetadata columnMetadata = entityMetadata.getColumn(column.getName());
 
-            for (ColumnMetadata column : columns) {
-                if (row.getColumnDefinitions().contains(column.getName())) {
-
+                if (columnMetadata != null) {
                     ByteBuffer data = row.getBytesUnsafe(column.getName());
 
-                    Object deserializedValue = column.deserialize(data);
+                    Object deserializedValue = columnMetadata.deserialize(data);
 
-                    column.writeValue(instance, deserializedValue);
+                    columnMetadata.writeValue(instance, deserializedValue);
                 }
             }
 
+            return instance;
         } catch (InstantiationException | IllegalAccessException e) {
             LOGGER.warn("Cant retrieve entity instance", e);
+        } finally {
+            timer.stop();
         }
-        return instance;
+
+        return null;
     }
 }

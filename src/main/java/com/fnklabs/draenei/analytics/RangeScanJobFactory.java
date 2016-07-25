@@ -40,35 +40,14 @@ public abstract class RangeScanJobFactory<Entity, Key, Value, CombinerOutputValu
     @Nullable
     @Override
     public final Map<? extends RangeScanJob, ClusterNode> map(List<ClusterNode> subgrid, @Nullable CacheConfiguration<Key, CombinerOutputValue> cacheConfiguration) throws IgniteException {
-        Map<HostAndPort, Set<TokenRange>> rangeScanTask = AnalyticsContext.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient());
+        Map<TokenRange, ClusterNode> rangeScanTask = AnalyticsContext.splitRangeScanTask(getDataProvider().getKeyspace(), getCassandraClient(), subgrid);
 
         Map<RangeScanJob, ClusterNode> jobs = rangeScanTask.entrySet()
                                                            .stream()
-                                                           .flatMap(entry -> entry.getValue().stream())
                                                            .collect(
                                                                    Collectors.toMap(
-                                                                           tokenRange -> createJob(tokenRange, cacheConfiguration),
-                                                                           tokenRange -> {
-                                                                               Optional<HostAndPort> first = rangeScanTask.entrySet()
-                                                                                                                          .stream()
-                                                                                                                          .filter(entry -> entry.getValue().contains(tokenRange))
-                                                                                                                          .map(Map.Entry::getKey)
-                                                                                                                          .findFirst();
-
-                                                                               ClusterNode clusterNode = first.flatMap(host -> subgrid.stream()
-                                                                                                                                      .filter(node -> node.addresses()
-                                                                                                                                                          .contains(host.getHostText()))
-                                                                                                                                      .findFirst())
-                                                                                                              .orElse(subgrid.stream().findAny().orElse(null));
-
-                                                                               getLogger().debug(
-                                                                                       "Nearest node for cassandra host {} is {}",
-                                                                                       first.orElse(null),
-                                                                                       clusterNode.addresses()
-                                                                               );
-
-                                                                               return clusterNode;
-                                                                           }
+                                                                           entry -> createJob(entry.getKey(), cacheConfiguration),
+                                                                           Map.Entry::getValue
                                                                    )
                                                            );
 
