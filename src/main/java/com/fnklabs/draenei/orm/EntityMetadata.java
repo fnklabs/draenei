@@ -58,8 +58,6 @@ class EntityMetadata {
     @NotNull
     private final HashMap<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
 
-    private final List<ColumnMetadata> fieldMetadata;
-
     private EntityMetadata(@NotNull String tableName,
                            @NotNull String keyspace, boolean compactStorage,
                            int maxFetchSize,
@@ -73,11 +71,6 @@ class EntityMetadata {
         this.readConsistencyLevel = readConsistencyLevel;
         this.writeConsistencyLevel = writeConsistencyLevel;
         this.tableMetadata = tableMetadata;
-
-        this.fieldMetadata = columnsMetadata.entrySet()
-                                            .stream()
-                                            .map(Map.Entry::getValue)
-                                            .collect(Collectors.toList());
     }
 
     /**
@@ -265,12 +258,10 @@ class EntityMetadata {
      * @return
      */
     List<ColumnMetadata> getFieldMetaData() {
-        return fieldMetadata;
-    }
-
-    @NotNull
-    public HashMap<String, ColumnMetadata> getColumnsMetadata() {
-        return columnsMetadata;
+        return columnsMetadata.entrySet()
+                              .stream()
+                              .map(Map.Entry::getValue)
+                              .collect(Collectors.toList());
     }
 
     @NotNull
