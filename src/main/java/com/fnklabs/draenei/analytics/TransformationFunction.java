@@ -55,8 +55,10 @@ abstract class TransformationFunction<InputKey, InputValue, OutputKey, OutputVal
 
             BigDecimal progress = BigDecimal.valueOf(processedEntries * 100).divide(localCacheSize, MATH_CONTEXT);
 
-            getLogger().debug("Processed entry in {}", timer);
-            getLogger().debug("Processed entries: {}/{} ({}%)", processedEntries, localCacheSize, progress);
+            if (processedEntries % 10000 == 0) {
+                getLogger().debug("Processed entry in {}", timer);
+                getLogger().debug("Processed entries: {}/{} ({}%)", processedEntries, localCacheSize, progress);
+            }
         });
 
 
