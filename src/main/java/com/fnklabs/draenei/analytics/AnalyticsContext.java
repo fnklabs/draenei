@@ -16,6 +16,7 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.internal.IgniteEx;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -155,38 +156,46 @@ public class AnalyticsContext {
             MapCombinerValue,
             ReducerOutputKey,
             ReducerOutputValue,
-            ReducerCombinerValue> IgniteCache<ReducerOutputKey, ReducerCombinerValue> compute(@NotNull RangeScanJobFactory<Entity, RangeScanOutputKey, RangeOutputValue, RangeScanCombinerValue> rangeScanJobFactory,
-                                                                                              @NotNull MapFactory<RangeScanOutputKey, RangeScanCombinerValue, MapOutputKey, MapOutputValue, MapCombinerValue> mapFactory,
-                                                                                              @NotNull ReducerFactory<MapOutputKey, MapCombinerValue, ReducerOutputKey, ReducerOutputValue, ReducerCombinerValue> reducerFactory) {
+            ReducerCombinerValue> CacheConfiguration<ReducerOutputKey, ReducerCombinerValue> compute(@NotNull RangeScanJobFactory<Entity, RangeScanOutputKey, RangeOutputValue, RangeScanCombinerValue> rangeScanJobFactory,
+                                                                                                     @NotNull MapFactory<RangeScanOutputKey, RangeScanCombinerValue, MapOutputKey, MapOutputValue, MapCombinerValue> mapFactory,
+                                                                                                     @NotNull ReducerFactory<MapOutputKey, MapCombinerValue, ReducerOutputKey, ReducerOutputValue, ReducerCombinerValue> reducerFactory) {
 
         Timer timer = MetricsFactory.getMetrics().getTimer("analytics.compute");
 
 
         CacheConfiguration<RangeScanOutputKey, RangeScanCombinerValue> scanResultConfig = scanStorage(rangeScanJobFactory);
+
         CacheConfiguration<MapOutputKey, MapCombinerValue> mapDataResultConfig = getCacheConfiguration(getJobName(mapFactory));
         CacheConfiguration<ReducerOutputKey, ReducerCombinerValue> reducerResultConfig = getCacheConfiguration(getJobName(reducerFactory));
 
         try {
             map(scanResultConfig, mapDataResultConfig, mapFactory);
 
-            getIgnite().getOrCreateCache(scanResultConfig).close(); // close data cache
+            getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
 
             reduce(mapDataResultConfig, reducerResultConfig, reducerFactory);
 
-            getIgnite().getOrCreateCache(mapDataResultConfig).close(); // close map result
+            getIgnite().getOrCreateCache(mapDataResultConfig).destroy(); // close map result
 
             LOGGER.debug("Complete compute operation in {}", timer);
 
-            return getIgnite().getOrCreateCache(reducerResultConfig);
-        } catch (IgniteException e) {
+
+        } catch (Exception e) {
             LOGGER.warn("Can't complete compute operation", e);
-            throw e;
+
+
+            LOGGER.warn("Destroy output cache {}, {}, {}", reducerResultConfig.getName());
+
+            getIgnite().getOrCreateCache(reducerResultConfig).destroy();
+
         } finally {
-            ignite.getOrCreateCache(scanResultConfig).close();
-            ignite.getOrCreateCache(mapDataResultConfig).close();
+            ignite.getOrCreateCache(scanResultConfig).destroy();
+            ignite.getOrCreateCache(mapDataResultConfig).destroy();
 
             timer.stop();
         }
+
+        return reducerResultConfig;
     }
 
     /**
@@ -203,7 +212,7 @@ public class AnalyticsContext {
             RangeScanCombinerValue,
             MapOutputKey,
             MapOutputValue,
-            MapCombinerValue> IgniteCache<MapOutputKey, MapCombinerValue> compute(
+            MapCombinerValue> CacheConfiguration<MapOutputKey, MapCombinerValue> compute(
             @NotNull RangeScanJobFactory<Entity, RangeScanOutputKey, RangeOutputValue, RangeScanCombinerValue> rangeScanJobFactory,
             @NotNull MapFactory<RangeScanOutputKey, RangeScanCombinerValue, MapOutputKey, MapOutputValue, MapCombinerValue> mapFactory
     ) {
@@ -211,20 +220,26 @@ public class AnalyticsContext {
         Timer timer = MetricsFactory.getMetrics().getTimer("analytics.compute");
 
 
+        CacheConfiguration<MapOutputKey, MapCombinerValue> mapDataResultConfig = getCacheConfiguration(getJobName(mapFactory));
+
         try {
             CacheConfiguration<RangeScanOutputKey, RangeScanCombinerValue> scanResultConfig = scanStorage(rangeScanJobFactory);
-            CacheConfiguration<MapOutputKey, MapCombinerValue> mapDataResultConfig = getCacheConfiguration(getJobName(mapFactory));
 
             map(scanResultConfig, mapDataResultConfig, mapFactory);
 
-            getIgnite().getOrCreateCache(scanResultConfig).close(); // close data cache
+            getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
 
             LOGGER.debug("Complete compute operation in {}", timer);
 
-            return getIgnite().getOrCreateCache(mapDataResultConfig);
-        } catch (IgniteException e) {
+            return mapDataResultConfig;
+        } catch (Exception e) {
             LOGGER.warn("Can't complete compute operation", e);
-            throw e;
+
+            LOGGER.warn("Destroy output cache {}", mapDataResultConfig.getName(), e);
+
+            ignite.getOrCreateCache(mapDataResultConfig).destroy();
+
+            return mapDataResultConfig;
         } finally {
             timer.stop();
         }
@@ -234,6 +249,19 @@ public class AnalyticsContext {
     public Ignite getIgnite() {
         return ignite;
     }
+
+    public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> CacheConfiguration<OutputKey, CombinerValue> map(
+            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
+            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
+    ) {
+
+        CacheConfiguration<OutputKey, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(mapFactory.getClass()));
+
+        map(inputDataConfig, cacheConfiguration, mapFactory);
+
+        return cacheConfiguration;
+    }
+
 
     public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> Long map(
             @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
@@ -251,22 +279,15 @@ public class AnalyticsContext {
 
             return mappedEntries;
 
+        } catch (Exception e) {
+            LOGGER.warn("Destroy output cache {}", outputDataConfig.getName(), e);
+
+            getIgnite().getOrCreateCache(outputDataConfig).destroy();
+
+            return 0L;
         } finally {
             timer.stop();
         }
-    }
-
-
-    public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> IgniteCache<OutputKey, CombinerValue> map(
-            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
-            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
-    ) {
-
-        CacheConfiguration<OutputKey, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(mapFactory.getClass()));
-
-        map(inputDataConfig, cacheConfiguration, mapFactory);
-
-        return getIgnite().getOrCreateCache(cacheConfiguration);
     }
 
     /**
@@ -282,7 +303,9 @@ public class AnalyticsContext {
     public <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory) {
         CacheConfiguration<Key, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(rangeScanJobFactory));
 
-        return scanStorage(rangeScanJobFactory, cacheConfiguration);
+        scanStorage(rangeScanJobFactory, cacheConfiguration);
+
+        return cacheConfiguration;
     }
 
     /**
@@ -291,29 +314,28 @@ public class AnalyticsContext {
      * Will generate token range and execute tasks to load data from cassandra by token range
      *
      * @param <Entity> Entity class type
-     *
-     * @return Total processed entities
      */
-    @NotNull
-    public <Entity, Key, Value, CombinerValue> CacheConfiguration<Key, CombinerValue> scanStorage(@NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory,
-                                                                                                  @NotNull CacheConfiguration<Key, CombinerValue> cacheConfiguration) {
-        Timer timer = MetricsFactory.getMetrics().getTimer("analytics.scan_storage");
+    public <Entity, Key, Value, CombinerValue> void scanStorage(
+            @NotNull RangeScanJobFactory<Entity, Key, Value, CombinerValue> rangeScanJobFactory,
+            @NotNull CacheConfiguration<Key, CombinerValue> cacheConfiguration
+    ) {
 
-        ClusterGroup clusterGroup = getServers();
+        try {
+            Timer timer = MetricsFactory.getMetrics().getTimer("analytics.scan_storage");
 
-        Integer loadedDocuments = getIgnite().compute(clusterGroup)
-                                             .execute(rangeScanJobFactory, cacheConfiguration);
+            ClusterGroup clusterGroup = getServers();
 
-        timer.stop();
+            Integer loadedDocuments = getIgnite().compute(clusterGroup)
+                                                 .execute(rangeScanJobFactory, cacheConfiguration);
 
-        LOGGER.warn("Complete to scan storage data in {}. Processed items: {} ", timer, loadedDocuments);
+            timer.stop();
 
-        return cacheConfiguration;
-    }
+            LOGGER.warn("Complete to scan storage data in {}. Processed items: {} ", timer, loadedDocuments);
 
-    @NotNull
-    private CassandraClient getCassandraClient() {
-        return cassandraClientFactory;
+        } catch (Exception e) {
+            LOGGER.warn("Destroy output cache {}", cacheConfiguration.getName(), e);
+            ignite.getOrCreateCache(cacheConfiguration).destroy();
+        }
     }
 
     private <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> void reduce(
@@ -329,9 +351,18 @@ public class AnalyticsContext {
 
 
             LOGGER.debug("Reduced entries {} in {}", mappedEntries, timer);
+        } catch (Exception e) {
+            LOGGER.warn("Destroy output cache {}", outputDataConfig.getName(), e);
+
+            getIgnite().getOrCreateCache(outputDataConfig).destroy();
         } finally {
             timer.stop();
         }
+    }
+
+    @NotNull
+    private CassandraClient getCassandraClient() {
+        return cassandraClientFactory;
     }
 
     private ClusterGroup getServers() {
