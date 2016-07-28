@@ -12,6 +12,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.eviction.fifo.FifoEvictionPolicy;
 import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
@@ -69,9 +70,9 @@ public class AnalyticsContext {
         cacheCfg.setReadThrough(false);
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(1000));
+        cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1000));
         cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(4L * 1024L * 1024L * 1024L);
+        cacheCfg.setOffHeapMaxMemory(2L * 1024L * 1024L * 1024L);
         return cacheCfg;
     }
 
@@ -171,10 +172,12 @@ public class AnalyticsContext {
         try {
             map(scanResultConfig, mapDataResultConfig, mapFactory);
 
+            getIgnite().getOrCreateCache(scanResultConfig).clear();
             getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
 
             reduce(mapDataResultConfig, reducerResultConfig, reducerFactory);
 
+            getIgnite().getOrCreateCache(mapDataResultConfig).clear();
             getIgnite().getOrCreateCache(mapDataResultConfig).destroy(); // close map result
 
             LOGGER.debug("Complete compute operation in {}", timer);
@@ -186,10 +189,13 @@ public class AnalyticsContext {
 
             LOGGER.warn("Destroy output cache {}, {}, {}", reducerResultConfig.getName());
 
+            getIgnite().getOrCreateCache(reducerResultConfig).clear();
             getIgnite().getOrCreateCache(reducerResultConfig).destroy();
 
         } finally {
+            ignite.getOrCreateCache(scanResultConfig).clear();
             ignite.getOrCreateCache(scanResultConfig).destroy();
+            ignite.getOrCreateCache(mapDataResultConfig).clear();
             ignite.getOrCreateCache(mapDataResultConfig).destroy();
 
             timer.stop();
@@ -227,6 +233,7 @@ public class AnalyticsContext {
 
             map(scanResultConfig, mapDataResultConfig, mapFactory);
 
+            getIgnite().getOrCreateCache(scanResultConfig).clear();
             getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
 
             LOGGER.debug("Complete compute operation in {}", timer);
@@ -237,6 +244,7 @@ public class AnalyticsContext {
 
             LOGGER.warn("Destroy output cache {}", mapDataResultConfig.getName(), e);
 
+            ignite.getOrCreateCache(mapDataResultConfig).clear();
             ignite.getOrCreateCache(mapDataResultConfig).destroy();
 
             return mapDataResultConfig;
@@ -282,6 +290,7 @@ public class AnalyticsContext {
         } catch (Exception e) {
             LOGGER.warn("Destroy output cache {}", outputDataConfig.getName(), e);
 
+            getIgnite().getOrCreateCache(outputDataConfig).clear();
             getIgnite().getOrCreateCache(outputDataConfig).destroy();
 
             return 0L;
@@ -334,6 +343,8 @@ public class AnalyticsContext {
 
         } catch (Exception e) {
             LOGGER.warn("Destroy output cache {}", cacheConfiguration.getName(), e);
+
+            ignite.getOrCreateCache(cacheConfiguration).clear();
             ignite.getOrCreateCache(cacheConfiguration).destroy();
         }
     }
@@ -354,6 +365,7 @@ public class AnalyticsContext {
         } catch (Exception e) {
             LOGGER.warn("Destroy output cache {}", outputDataConfig.getName(), e);
 
+            getIgnite().getOrCreateCache(outputDataConfig).clear();
             getIgnite().getOrCreateCache(outputDataConfig).destroy();
         } finally {
             timer.stop();
