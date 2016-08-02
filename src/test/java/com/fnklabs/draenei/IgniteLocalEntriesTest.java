@@ -9,6 +9,7 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import javax.cache.Cache;
@@ -27,7 +28,7 @@ public class IgniteLocalEntriesTest {
 
         Ignite ignite = Ignition.start(igniteConfiguration);
 
-        CacheConfiguration<Integer, UUID> cacheCfg = AnalyticsContext.getCacheConfiguration("test");
+        CacheConfiguration<Integer, UUID> cacheCfg = new AnalyticsContext(Mockito.mock(CassandraClient.class), Mockito.mock(Ignite.class)).getCacheConfiguration("test");
         cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(10));
         cacheCfg.setOffHeapMaxMemory(-1);
         cacheCfg.setSwapEnabled(true);

@@ -9,15 +9,18 @@ import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.eviction.fifo.FifoEvictionPolicy;
 import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cache.query.ContinuousQuery;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.cache.query.annotations.QueryTextField;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.FileSystemConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.events.EventType;
+import org.apache.ignite.igfs.IgfsMode;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.logger.slf4j.Slf4jLogger;
 import org.apache.ignite.marshaller.optimized.OptimizedMarshaller;
@@ -25,6 +28,7 @@ import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.multicast.TcpDiscoveryMulticastIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.apache.ignite.spi.eventstorage.memory.MemoryEventStorageSpi;
 import org.apache.ignite.spi.swapspace.file.FileSwapSpaceSpi;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
@@ -38,6 +42,7 @@ import javax.cache.configuration.Factory;
 import javax.cache.event.*;
 import java.io.Serializable;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
@@ -45,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Ignore
 public class IgniteTest implements Serializable {
-    private static AtomicInteger igniteNumer = new AtomicInteger(1);
+    private static AtomicInteger igniteNumber = new AtomicInteger(1);
 
     @NotNull
     public static IgniteConfiguration getIgniteConfiguration() throws UnknownHostException {
@@ -53,19 +58,16 @@ public class IgniteTest implements Serializable {
         userProperties.put("ROLE", "worker");
 
         IgniteConfiguration cfg = new IgniteConfiguration();
-        cfg.setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE);
 
-        cfg.setGridName("IgniteNode[" + igniteNumer.getAndIncrement() + "]");
+        cfg.setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE);
+        cfg.setGridName("IgniteNode[" + igniteNumber.getAndIncrement() + "]");
         cfg.setClientMode(false);
         cfg.setGridLogger(new Slf4jLogger(LoggerFactory.getLogger(Slf4jLogger.class)));
         cfg.setUserAttributes(userProperties);
         cfg.setMarshaller(new OptimizedMarshaller(false));
         cfg.setSwapSpaceSpi(new FileSwapSpaceSpi());
 
-
-//        cfg.setPublicThreadPoolSize(8);
-//        cfg.setManagementThreadPoolSize(8);
-//        cfg.setSystemThreadPoolSize(8);
+        cfg.setEventStorageSpi(new MemoryEventStorageSpi());
 
         TcpCommunicationSpi commSpi = new TcpCommunicationSpi();
         commSpi.setSlowClientQueueLimit(1000);
@@ -77,11 +79,68 @@ public class IgniteTest implements Serializable {
         discoSpi.setForceServerMode(false);
 
         TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryMulticastIpFinder();
-
         discoSpi.setIpFinder(ipFinder);
+
         cfg.setDiscoverySpi(discoSpi);
 
+        cfg.setCacheConfiguration(new CacheConfiguration());
+
         return cfg;
+    }
+
+    @Test
+    public void cacheDestroy() throws Exception {
+        CacheConfiguration<UUID, UUID> cacheCfg = new CacheConfiguration<>(UUID.randomUUID().toString());
+        cacheCfg.setBackups(0);
+        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+        cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
+        cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1));
+        cacheCfg.setOffHeapMaxMemory(1600000); // ~1 000 000 UUIDs
+        cacheCfg.setSwapEnabled(false);
+
+        Ignite first = Ignition.start(getIgniteConfiguration());
+
+        first.getOrCreateCache(cacheCfg).destroy();
+    }
+
+    @Test
+    public void offheapCache() throws Exception {
+
+
+        Ignite first = Ignition.start(getIgniteConfiguration());
+        Ignite second = Ignition.start(getIgniteConfiguration());
+
+        for (int i = 0; i < 10; i++) {
+
+            CacheConfiguration<UUID, UUID> cacheCfg = new CacheConfiguration<>(UUID.randomUUID().toString());
+            cacheCfg.setBackups(0);
+            cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+            cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+            cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
+            cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1));
+            cacheCfg.setOffHeapMaxMemory(-1); // ~1 000 000 UUIDs
+            cacheCfg.setSwapEnabled(true);
+
+            for (int j = 0; j < 500000; j++) {
+                if (j % 2 == 0) {
+                    first.getOrCreateCache(cacheCfg).put(UUID.randomUUID(), UUID.randomUUID());
+                } else {
+                    second.getOrCreateCache(cacheCfg).put(UUID.randomUUID(), UUID.randomUUID());
+                }
+            }
+
+            first.getOrCreateCache(cacheCfg).destroy();
+
+            LoggerFactory.getLogger(getClass()).debug("Destroy cache: {}", cacheCfg.getName());
+        }
+
+    }
+
+    @Test
+    public void igfsMR() throws Exception {
+        Ignite start = Ignition.start(getIgniteConfiguration());
+
     }
 
     @Test

@@ -62,7 +62,7 @@ public class AnalyticsContext {
      *
      * @return Cache Configuration for specified entity class
      */
-    public static <Key, Entry> CacheConfiguration<Key, Entry> getCacheConfiguration(String cacheName) {
+    public <Key, Entry> CacheConfiguration<Key, Entry> getCacheConfiguration(String cacheName) {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
         cacheCfg.setBackups(0);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
@@ -72,7 +72,7 @@ public class AnalyticsContext {
         cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
         cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1000));
         cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(2L * 1024L * 1024L * 1024L);
+        cacheCfg.setOffHeapMaxMemory(0);
         return cacheCfg;
     }
 
