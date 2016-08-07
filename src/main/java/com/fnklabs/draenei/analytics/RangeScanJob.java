@@ -53,8 +53,7 @@ public abstract class RangeScanJob<Entity, OutputKey, OutputValue, CombinerOutpu
 
             Metrics metrics = MetricsFactory.getMetrics();
 
-            CacheEntryProcessor<OutputKey, CombinerOutputValue, CombinerOutputValue> dataCombiner = getDataCombiner();
-            Emitter<OutputKey, OutputValue, CombinerOutputValue> emitter = new Emitter<>(cache, dataCombiner);
+            Emitter<OutputKey, OutputValue, CombinerOutputValue> emitter = new Emitter<>(cache, getDataCombiner());
 
             getDataProvider().load(start, end, entity -> {
                 Timer userCallBackTimer = metrics.getTimer("analytics.load_data.user_callback");
@@ -64,8 +63,6 @@ public abstract class RangeScanJob<Entity, OutputKey, OutputValue, CombinerOutpu
                 map(entity, emitter);
 
                 userCallBackTimer.stop();
-
-//                getLogger().debug("Perform user_callback in {}", userCallBackTimer);
             });
 
             return entries.intValue();
@@ -74,6 +71,7 @@ public abstract class RangeScanJob<Entity, OutputKey, OutputValue, CombinerOutpu
 
             throw new ComputeExecutionRejectedException(e);
         } finally {
+            getLogger().debug("Loaded entries: {}", entries);
             timer.stop();
         }
     }

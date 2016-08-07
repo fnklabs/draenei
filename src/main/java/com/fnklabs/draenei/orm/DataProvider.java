@@ -481,7 +481,7 @@ public class DataProvider<V> {
         Timer fetchResultSetTimer = getMetrics().getTimer("data_provider.load.fetch");
 
         for (Row row : resultSet) {
-            METRICS.getCounter(MetricsType.DATA_PROVIDER_LOAD_BY_TOKEN_RANGE.name()).inc();
+            METRICS.getCounter(MetricsType.DATA_PROVIDER_FETCH_RESULT_SET.name()).inc();
 
             V instance = mapToObject(row);
 
@@ -655,7 +655,9 @@ public class DataProvider<V> {
         DATA_PROVIDER_REMOVE,
         DATA_PROVIDER_FIND,
         DATA_PROVIDER_CREATE_KEY,
-        DATA_PROVIDER_LOAD_BY_TOKEN_RANGE;
+        DATA_PROVIDER_LOAD_BY_TOKEN_RANGE,
+        DATA_PROVIDER_FETCH_RESULT_SET;
+
     }
 
 

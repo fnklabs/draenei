@@ -58,25 +58,6 @@ public class AnalyticsContext {
     }
 
     /**
-     * Get default cache configuration for specified entity class
-     *
-     * @return Cache Configuration for specified entity class
-     */
-    public <Key, Entry> CacheConfiguration<Key, Entry> getCacheConfiguration(String cacheName) {
-        CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
-        cacheCfg.setBackups(0);
-        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
-        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
-        cacheCfg.setReadThrough(false);
-        cacheCfg.setWriteThrough(false);
-        cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1000));
-        cacheCfg.setSwapEnabled(true);
-        cacheCfg.setOffHeapMaxMemory(0);
-        return cacheCfg;
-    }
-
-    /**
      * Split range scan task for provided keyspace by cassandra hosts from which data can be read
      *
      * @param keyspace        Keyspace
@@ -138,6 +119,25 @@ public class AnalyticsContext {
         });
 
         return clusterNode.orElse(subgrid.stream().findAny().get());
+    }
+
+    /**
+     * Get default cache configuration for specified entity class
+     *
+     * @return Cache Configuration for specified entity class
+     */
+    public <Key, Entry> CacheConfiguration<Key, Entry> getCacheConfiguration(String cacheName) {
+        CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
+        cacheCfg.setBackups(0);
+        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+        cacheCfg.setReadThrough(false);
+        cacheCfg.setWriteThrough(false);
+        cacheCfg.setMemoryMode(CacheMemoryMode.OFFHEAP_TIERED);
+        cacheCfg.setEvictionPolicy(new FifoEvictionPolicy(1000));
+        cacheCfg.setSwapEnabled(true);
+        cacheCfg.setOffHeapMaxMemory(0);
+        return cacheCfg;
     }
 
     /**
@@ -253,10 +253,6 @@ public class AnalyticsContext {
         }
     }
 
-    @NotNull
-    public Ignite getIgnite() {
-        return ignite;
-    }
 
     public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> CacheConfiguration<OutputKey, CombinerValue> map(
             @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
@@ -349,7 +345,7 @@ public class AnalyticsContext {
         }
     }
 
-    private <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> void reduce(
+    public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> void reduce(
             @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
             @NotNull CacheConfiguration<OutputKey, CombinerValue> outputDataConfig,
             @NotNull ReducerFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> reducerFactory
@@ -370,6 +366,11 @@ public class AnalyticsContext {
         } finally {
             timer.stop();
         }
+    }
+
+    @NotNull
+    public Ignite getIgnite() {
+        return ignite;
     }
 
     @NotNull
