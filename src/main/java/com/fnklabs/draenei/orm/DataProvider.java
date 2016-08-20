@@ -345,7 +345,7 @@ public class DataProvider<V> {
         });
     }
 
-    List<V> fetch(List<Object> keys) {
+    protected List<V> fetch(List<Object> keys) {
         List<V> result = new ArrayList<>();
 
         fetch(keys, result::add);
@@ -467,7 +467,7 @@ public class DataProvider<V> {
         }, getExecutorService());
     }
 
-    private void fetch(List<Object> keys, Consumer<V> consumer) {
+    protected void fetch(List<Object> keys, Consumer<V> consumer) {
         BoundStatement boundStatement = getFetchBoundStatement(keys);
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
