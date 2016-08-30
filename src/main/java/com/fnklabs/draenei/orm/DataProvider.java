@@ -289,7 +289,7 @@ public class DataProvider<V> {
         return getEntityMetadata().getKeyspace();
     }
 
-    public <UserCallback extends Consumer<V>> int load(long start, long end, UserCallback consumer) {
+    public <UserCallback extends Function<V, Boolean>> int load(long start, long end, UserCallback consumer) {
         Timer timer = getMetrics().getTimer("data_provider.load");
 
         Select select = QueryBuilder.select()
@@ -455,7 +455,7 @@ public class DataProvider<V> {
         return Futures.transform(fetchAsync(keys, result::add), (Boolean fetchResult) -> result);
     }
 
-    private ListenableFuture<Boolean> fetchAsync(List<Object> keys, Consumer<V> consumer) {
+    private ListenableFuture<Boolean> fetchAsync(List<Object> keys, Function<V, Boolean> consumer) {
         BoundStatement boundStatement = getFetchBoundStatement(keys);
 
         ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
@@ -467,7 +467,7 @@ public class DataProvider<V> {
         }, getExecutorService());
     }
 
-    protected void fetch(List<Object> keys, Consumer<V> consumer) {
+    protected void fetch(List<Object> keys, Function<V, Boolean> consumer) {
         BoundStatement boundStatement = getFetchBoundStatement(keys);
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);
@@ -475,7 +475,7 @@ public class DataProvider<V> {
         fetchResultSet(resultSet, consumer);
     }
 
-    private int fetchResultSet(ResultSet resultSet, Consumer<V> consumer) {
+    private int fetchResultSet(ResultSet resultSet, Function<V, Boolean> consumer) {
         int loadedItems = 0;
 
         Timer fetchResultSetTimer = getMetrics().getTimer("data_provider.load.fetch");
@@ -485,11 +485,13 @@ public class DataProvider<V> {
 
             V instance = mapToObject(row);
 
-            if (instance != null) {
-                consumer.accept(instance);
-            }
-
             loadedItems++;
+
+            if (instance != null) {
+                if (!consumer.apply(instance)) {
+                    break;
+                }
+            }
         }
 
         fetchResultSetTimer.stop();

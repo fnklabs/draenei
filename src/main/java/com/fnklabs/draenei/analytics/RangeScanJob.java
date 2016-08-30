@@ -63,6 +63,8 @@ public abstract class RangeScanJob<Entity, OutputKey, OutputValue, CombinerOutpu
                 map(entity, emitter);
 
                 userCallBackTimer.stop();
+
+                return true;
             });
 
             return entries.intValue();
