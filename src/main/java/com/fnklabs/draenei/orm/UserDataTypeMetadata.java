@@ -1,5 +1,6 @@
 package com.fnklabs.draenei.orm;
 
+import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.UDTValue;
 import com.datastax.driver.core.UserType;
@@ -17,13 +18,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-class UserDataTypeMetadata implements ColumnMetadata {
+class UserDataTypeMetadata<E, T> implements ColumnMetadata<E, T> {
     public static final Logger LOGGER = LoggerFactory.getLogger(UserDataTypeMetadata.class);
     @NotNull
-    private final ColumnMetadata columnMetadata;
+    private final ColumnMetadata<E, T> columnMetadata;
 
     @NotNull
-    private final Class udtClassType;
+    private final Class<T> udtClassType;
 
     @NotNull
     private final UserType udtType;
@@ -63,47 +64,28 @@ class UserDataTypeMetadata implements ColumnMetadata {
 
     @NotNull
     @Override
-    public Class getFieldType() {
+    public Class<T> getFieldType() {
         return columnMetadata.getFieldType();
-    }
-
-    @Override
-    public void writeValue(@NotNull Object entity, @Nullable Object value) {
-        columnMetadata.writeValue(entity, value);
     }
 
     @Nullable
     @Override
-    public <FieldType> FieldType readValue(@NotNull Object object) {
+    public T readValue(@NotNull E object) {
         return columnMetadata.readValue(object);
     }
 
     @Override
-    public ByteBuffer serialize(@Nullable Object value) {
-
-        if (value instanceof Collection) {
-
-            Stream<UDTValue> stream = ((Collection<Object>) value).stream()
-                                                                  .flatMap(item -> {
-                                                                      if (item == null) {
-                                                                          return Stream.<UDTValue>empty();
-                                                                      }
-
-                                                                      return Stream.<UDTValue>of(mapToUdt(item));
-                                                                  });
-
-            if (value instanceof Set) {
-                return columnMetadata.serialize(stream.collect(Collectors.toSet()));
-            } else if (value instanceof List) {
-                return columnMetadata.serialize(stream.collect(Collectors.toList()));
-            }
-        }
-
-        return udtType.serialize(mapToUdt(value), ProtocolVersion.NEWEST_SUPPORTED);
+    public void writeValue(@NotNull E entity, @Nullable T value) {
+        columnMetadata.writeValue(entity, value);
     }
 
     @Override
-    public <T> T deserialize(@Nullable ByteBuffer data) {
+    public ByteBuffer serialize(@Nullable T value) {
+        return CodecRegistry.DEFAULT_INSTANCE.codecFor(udtType).serialize(mapToUdt(value), ProtocolVersion.NEWEST_SUPPORTED);
+    }
+
+    @Override
+    public T deserialize(@Nullable ByteBuffer data) {
         Object deserializedValue = columnMetadata.deserialize(data);
 
         if (deserializedValue instanceof Collection) {
@@ -137,8 +119,8 @@ class UserDataTypeMetadata implements ColumnMetadata {
         return null;
     }
 
-    private Object toObject(UDTValue udtValue) throws InstantiationException, IllegalAccessException {
-        Object newInstance = udtClassType.newInstance();
+    private T toObject(UDTValue udtValue) throws InstantiationException, IllegalAccessException {
+        T newInstance = udtClassType.newInstance();
 
         udtType.getFieldNames()
                .forEach(fieldName -> {

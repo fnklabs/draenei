@@ -7,8 +7,11 @@ import java.nio.ByteBuffer;
 
 /**
  * Column metadata interface
+ *
+ * @param <E> Entity type
+ * @param <T> Column type
  */
-interface ColumnMetadata {
+interface ColumnMetadata<E, T> {
     /**
      * Get column name
      *
@@ -23,7 +26,7 @@ interface ColumnMetadata {
      * @return Class type of field
      */
     @NotNull
-    Class getFieldType();
+    Class<T> getFieldType();
 
     /**
      * Write value to entity/object
@@ -31,18 +34,17 @@ interface ColumnMetadata {
      * @param entity Object on which write method will be invoked
      * @param value  Value to write
      */
-    void writeValue(@NotNull Object entity, @Nullable Object value);
+    void writeValue(@NotNull E entity, @Nullable T value);
 
     /**
-     * Read value from object
+     * Read value from entity
      *
-     * @param object      Object on which read method will be invoked
-     * @param <FieldType> Class type to which value will be casted
+     * @param entity Object on which read method will be invoked
      *
-     * @return Object value or null
+     * @return T value or null
      */
     @Nullable
-    <FieldType> FieldType readValue(@NotNull Object object);
+    T readValue(@NotNull E entity);
 
     /**
      * Serialize value to cassandra value
@@ -51,17 +53,14 @@ interface ColumnMetadata {
      *
      * @return Serialized value
      */
-    ByteBuffer serialize(@Nullable Object value);
+    ByteBuffer serialize(@Nullable T value);
 
     /**
      * Deserialize cassandra value to {@code <T>}
      *
      * @param data Value that must be deserialized
-     * @param <T>  Class type to which value will be casted
      *
      * @return Deserialized value
-     *
-     * @throws ClassCastException if can't cast read value to FieldType
      */
-    <T> T deserialize(@Nullable ByteBuffer data);
+    T deserialize(@Nullable ByteBuffer data);
 }

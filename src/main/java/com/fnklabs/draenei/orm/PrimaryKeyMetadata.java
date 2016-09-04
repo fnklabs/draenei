@@ -9,11 +9,11 @@ import java.nio.ByteBuffer;
 /**
  * PrimaryKey metadata decorator
  */
-class PrimaryKeyMetadata implements ColumnMetadata {
+class PrimaryKeyMetadata<E, T> implements ColumnMetadata<E, T> {
     /**
      * Column metadata object
      */
-    private final ColumnMetadata columnMetadata;
+    private final ColumnMetadata<E, T> columnMetadata;
 
     /**
      * Primary key order
@@ -57,24 +57,27 @@ class PrimaryKeyMetadata implements ColumnMetadata {
         return columnMetadata.getFieldType();
     }
 
+    @Nullable
     @Override
-    public void writeValue(@NotNull Object entity, @Nullable Object value) {
+    public T readValue(@NotNull E entity) {
+        return columnMetadata.readValue(entity);
+    }
+
+    @Override
+    public T deserialize(@Nullable ByteBuffer data) {
+        return columnMetadata.deserialize(data);
+    }
+
+    @Override
+    public void writeValue(@NotNull E entity, @Nullable T value) {
         columnMetadata.writeValue(entity, value);
     }
 
-    @Nullable
-    @Override
-    public <FieldType> FieldType readValue(@NotNull Object object) throws ClassCastException {
-        return columnMetadata.readValue(object);
-    }
 
     @Override
-    public ByteBuffer serialize(Object value) {
+    public ByteBuffer serialize(T value) {
         return columnMetadata.serialize(value);
     }
 
-    @Override
-    public <T> T deserialize(@Nullable ByteBuffer data) {
-        return columnMetadata.deserialize(data);
-    }
+
 }

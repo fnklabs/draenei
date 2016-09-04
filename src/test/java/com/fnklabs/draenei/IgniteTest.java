@@ -1,6 +1,5 @@
 package com.fnklabs.draenei;
 
-import com.fnklabs.draenei.orm.annotations.Enumerated;
 import com.google.common.base.MoreObjects;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -16,11 +15,9 @@ import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.cache.query.annotations.QueryTextField;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.FileSystemConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.events.EventType;
-import org.apache.ignite.igfs.IgfsMode;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.logger.slf4j.Slf4jLogger;
 import org.apache.ignite.marshaller.optimized.OptimizedMarshaller;
@@ -42,7 +39,6 @@ import javax.cache.configuration.Factory;
 import javax.cache.event.*;
 import java.io.Serializable;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
@@ -343,7 +339,6 @@ public class IgniteTest implements Serializable {
         private UUID id = UUID.randomUUID();
 
         @QueryTextField
-        @Enumerated(enumType = TestEnum.class)
         private String title;
 
         @QueryTextField

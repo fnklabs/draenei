@@ -43,7 +43,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
                                  @NotNull CassandraClient cassandraClient,
                                  @NotNull Ignite ignite,
                                  @NotNull ExecutorService executorService) {
-        super(clazz, cassandraClient, executorService);
+        super(clazz, cassandraClient, executorService, dataGrid);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
 
@@ -171,6 +171,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return Future for remove from cache operation
      */
+    @Override
     public ListenableFuture<Boolean> removeAsync(@NotNull Entry entity) {
 
         Timer timer = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE.name());

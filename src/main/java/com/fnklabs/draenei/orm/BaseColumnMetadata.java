@@ -1,8 +1,10 @@
 package com.fnklabs.draenei.orm;
 
 
+import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.ProtocolVersion;
+import com.datastax.driver.core.TypeCodec;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.google.common.base.MoreObjects;
 import org.jetbrains.annotations.NotNull;
@@ -16,15 +18,15 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 
 /**
- * Column metadata
+ * {@inheritDoc}
  */
-class BaseColumnMetadata implements ColumnMetadata {
+class BaseColumnMetadata<E, T> implements ColumnMetadata<E, T> {
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseColumnMetadata.class);
 
     /**
      * Column field java class type
      */
-    private final Class type;
+    private final Class<T> type;
 
     /**
      * Column name
@@ -56,8 +58,8 @@ class BaseColumnMetadata implements ColumnMetadata {
      * @param columnDataType     Column DataType
      */
     BaseColumnMetadata(PropertyDescriptor propertyDescriptor,
-                       Class entityClassType,
-                       Class type,
+                       Class<E> entityClassType,
+                       Class<T> type,
                        String name,
                        DataType columnDataType) {
 
@@ -91,7 +93,7 @@ class BaseColumnMetadata implements ColumnMetadata {
 
     @NotNull
     @Override
-    public Class getFieldType() {
+    public Class<T> getFieldType() {
         return type;
     }
 
@@ -99,7 +101,7 @@ class BaseColumnMetadata implements ColumnMetadata {
      * {@inheritDoc}
      */
     @Override
-    public void writeValue(@NotNull Object entity, @Nullable Object value) {
+    public void writeValue(@NotNull E entity, @Nullable T value) {
         if (value == null) { // don't set null value todo check method arguments annotations for NotNull
             return;
         }
@@ -118,11 +120,11 @@ class BaseColumnMetadata implements ColumnMetadata {
      */
     @Nullable
     @Override
-    public <FieldType> FieldType readValue(@NotNull Object object) {
+    public T readValue(@NotNull Object object) {
         Method readMethod = getReadMethod();
 
         try {
-            return (FieldType) readMethod.invoke(object);
+            return (T) readMethod.invoke(object);
         } catch (IllegalAccessException | InvocationTargetException | ClassCastException e) {
             LOGGER.warn("Can't invoke read method: " + readMethod.getName(), e);
         }
@@ -134,32 +136,40 @@ class BaseColumnMetadata implements ColumnMetadata {
      * {@inheritDoc}
      */
     @Override
-    public ByteBuffer serialize(Object value) {
+    public ByteBuffer serialize(T value) {
         if (value == null) {
             return null;
         }
 
-        return columnDataType.serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
+        return getCodec().serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
     }
 
     /**
      * Deserialize data from cassandra to java type
      *
      * @param data Serialized cassandra type
-     * @param <T>  Entity class java type
      *
      * @return Deserialized object
      */
     @SuppressWarnings("Unchecked class type")
     @Override
-    public <T> T deserialize(@Nullable ByteBuffer data) {
+    public T deserialize(@Nullable ByteBuffer data) {
         if (data == null) {
             return null;
         }
 
-        Object deserializedObject = columnDataType.deserialize(data, ProtocolVersion.NEWEST_SUPPORTED);
+        return getCodec().deserialize(data, ProtocolVersion.NEWEST_SUPPORTED);
+    }
 
-        return (T) deserializedObject;
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                          .add("name", getName())
+                          .toString();
+    }
+
+    private TypeCodec<T> getCodec() {
+        return CodecRegistry.DEFAULT_INSTANCE.codecFor(columnDataType, type);
     }
 
     @NotNull
@@ -170,12 +180,5 @@ class BaseColumnMetadata implements ColumnMetadata {
     @NotNull
     private Method getWriteMethod() {
         return writeMethod;
-    }
-
-    @Override
-    public String toString() {
-        return MoreObjects.toStringHelper(this)
-                          .add("name", getName())
-                          .toString();
     }
 }

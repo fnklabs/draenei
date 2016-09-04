@@ -144,13 +144,6 @@ class EntityMetadata {
 
                     ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, udtClassType, udtClassType, columnName, fieldType);
 
-                    if (field.isAnnotationPresent(Enumerated.class)) {
-                        Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
-
-                        columnMetadata = new EnumeratedMetadata(columnMetadata, enumeratedAnnotation.enumType());
-                    }
-
-
                     return columnMetadata;
                 } catch (IllegalArgumentException e) {
                     LOGGER.warn(String.format("Can't get dataType field '%s' for UDT: '%s'", columnName, udtClassType.getName()), e);
@@ -193,11 +186,6 @@ class EntityMetadata {
 
                 ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, clazz, field.getType(), columnName, tableMetadata.getColumn(columnName).getType());
 
-                if (field.isAnnotationPresent(Enumerated.class)) {
-                    Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
-
-                    columnMetadata = new EnumeratedMetadata(columnMetadata, enumeratedAnnotation.enumType());
-                }
                 if (field.isAnnotationPresent(UDTColumn.class)) {
                     UDTColumn udtColumnAnnotation = field.getDeclaredAnnotation(UDTColumn.class);
 

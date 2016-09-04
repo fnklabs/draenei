@@ -45,7 +45,7 @@ dependencies {
     compile 'com.intellij:annotations:12.0'
 
 
-    compile 'com.datastax.cassandra:cassandra-driver-core:2.1.9'
+    compile 'com.datastax.cassandra:cassandra-driver-core:3.1.0'
 
     compile 'org.slf4j:slf4j-api:1.7.13'
     compile 'ch.qos.logback:logback-core:1.1.3'
@@ -61,14 +61,12 @@ dependencies {
     compile 'org.apache.lucene.morphology:russian:1.1'
     compile 'org.apache.lucene.morphology:english:1.1'
 
-
     compile 'org.apache.ignite:ignite-core:1.7.0'
     compile 'org.apache.ignite:ignite-slf4j:1.7.0'
     compile 'org.apache.ignite:ignite-indexing:1.7.0'
 
-
-    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.5'
-    compile 'com.fnklabs:fnklabs-metrics-core:0.1.5'
+    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.6'
+    compile 'com.fnklabs:fnklabs-metrics-core:0.1.6'
 }
 
 jar {

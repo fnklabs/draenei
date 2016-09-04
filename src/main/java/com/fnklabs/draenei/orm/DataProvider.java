@@ -28,7 +28,6 @@ import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class DataProvider<V> {
@@ -58,19 +57,23 @@ public class DataProvider<V> {
     @NotNull
     private final ExecutorService executorService;
 
+    private final DataGrid<Long, V> dataGrid;
+
     /**
      * Construct provider
      *
      * @param clazz           Entity class
      * @param cassandraClient CassandraClient instance
      * @param executorService ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
+     * @param dataGrid
      */
-    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClient cassandraClient, @NotNull ExecutorService executorService) {
+    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClient cassandraClient, @NotNull ExecutorService executorService, DataGrid<Long, V> dataGrid) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClient;
         this.executorService = executorService;
         this.entityMetadata = build(clazz);
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
+        this.dataGrid = dataGrid;
     }
 
     /**
@@ -85,11 +88,9 @@ public class DataProvider<V> {
 
         Insert insert = QueryBuilder.insertInto(getEntityMetadata().getTableName());
 
-        List<ColumnMetadata> columns = getEntityMetadata().getFieldMetaData();
+        getEntityMetadata().getFieldMetaData()
+                           .forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
 
-        columns.forEach(column -> insert.value(column.getName(), QueryBuilder.bindMarker()));
-
-        ListenableFuture<Boolean> resultFuture;
 
         try {
             PreparedStatement prepare = getCassandraClient().prepare(getEntityMetadata().getKeyspace(), insert.getQueryString());
@@ -98,16 +99,17 @@ public class DataProvider<V> {
             BoundStatement boundStatement = createBoundStatement(prepare, entity, columns);
 
             ResultSetFuture input = getCassandraClient().executeAsync(boundStatement);
-            resultFuture = Futures.transform(input, ResultSet::wasApplied, getExecutorService());
+            ListenableFuture<Boolean> transform = Futures.transform(input, ResultSet::wasApplied, getExecutorService());
+
+            monitorFuture(saveAsyncTimer, transform);
+            return transform;
         } catch (SyntaxError e) {
             LOGGER.warn("Can't prepare query: " + insert.getQueryString(), e);
 
-            resultFuture = Futures.immediateFailedFuture(e);
+            return Futures.immediateFailedFuture(e);
         }
 
-        monitorFuture(saveAsyncTimer, resultFuture);
 
-        return resultFuture;
     }
 
     /**
