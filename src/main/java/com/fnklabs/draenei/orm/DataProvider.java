@@ -73,6 +73,9 @@ public class DataProvider<V> {
         this.mapToObjectFunction = new MapToObjectFunction<>(clazz, entityMetadata);
     }
 
+    public void seek(Function<V, Boolean> function) {
+        fetch(Collections.emptyList(), function);
+    }
     /**
      * Save entity asynchronously
      *
@@ -467,7 +470,7 @@ public class DataProvider<V> {
         }, getExecutorService());
     }
 
-    protected void fetch(List<Object> keys, Function<V, Boolean> consumer) {
+    private void fetch(List<Object> keys, Function<V, Boolean> consumer) {
         BoundStatement boundStatement = getFetchBoundStatement(keys);
 
         ResultSet resultSet = getCassandraClient().execute(boundStatement);

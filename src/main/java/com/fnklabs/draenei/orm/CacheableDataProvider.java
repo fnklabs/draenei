@@ -36,7 +36,8 @@ import java.util.concurrent.ExecutorService;
  */
 public class CacheableDataProvider<Entry extends Serializable> extends DataProvider<Entry> {
 
-    public static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
+
     private final IgniteCache<Long, Entry> cache;
 
     public CacheableDataProvider(@NotNull Class<Entry> clazz,
@@ -71,7 +72,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
             @Override
             public void onSuccess(Entry result) {
                 if (result != null) {
-                    cache.put(cacheKey, result);
+                    cache.putIfAbsent(cacheKey, result);
                 }
             }
 

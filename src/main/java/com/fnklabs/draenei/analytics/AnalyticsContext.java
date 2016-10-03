@@ -7,24 +7,20 @@ import com.fnklabs.metrics.Timer;
 import com.google.common.base.Verify;
 import com.google.common.net.HostAndPort;
 import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteCache;
-import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.eviction.fifo.FifoEvictionPolicy;
-import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.compute.ComputeTaskAdapter;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.internal.IgniteEx;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 
 /**
@@ -170,12 +166,12 @@ public class AnalyticsContext {
         CacheConfiguration<ReducerOutputKey, ReducerCombinerValue> reducerResultConfig = getCacheConfiguration(getJobName(reducerFactory));
 
         try {
-            map(scanResultConfig, mapDataResultConfig, mapFactory);
+            map(mapFactory, mapDataResultConfig, scanResultConfig);
 
             getIgnite().getOrCreateCache(scanResultConfig).clear();
             getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
 
-            reduce(mapDataResultConfig, reducerResultConfig, reducerFactory);
+            reduce(reducerFactory, reducerResultConfig, mapDataResultConfig);
 
             getIgnite().getOrCreateCache(mapDataResultConfig).clear();
             getIgnite().getOrCreateCache(mapDataResultConfig).destroy(); // close map result
@@ -231,7 +227,7 @@ public class AnalyticsContext {
         try {
             CacheConfiguration<RangeScanOutputKey, RangeScanCombinerValue> scanResultConfig = scanStorage(rangeScanJobFactory);
 
-            map(scanResultConfig, mapDataResultConfig, mapFactory);
+            map(mapFactory, mapDataResultConfig, scanResultConfig);
 
             getIgnite().getOrCreateCache(scanResultConfig).clear();
             getIgnite().getOrCreateCache(scanResultConfig).destroy(); // close data cache
@@ -255,22 +251,22 @@ public class AnalyticsContext {
 
 
     public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> CacheConfiguration<OutputKey, CombinerValue> map(
-            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
-            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
+            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory,
+            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig
     ) {
 
-        CacheConfiguration<OutputKey, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(mapFactory.getClass()));
+        CacheConfiguration<OutputKey, CombinerValue> cacheConfiguration = getCacheConfiguration(getJobName(mapFactory));
 
-        map(inputDataConfig, cacheConfiguration, mapFactory);
+        map(mapFactory, cacheConfiguration, inputDataConfig);
 
         return cacheConfiguration;
     }
 
 
     public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> Long map(
-            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
+            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory,
             @NotNull CacheConfiguration<OutputKey, CombinerValue> outputDataConfig,
-            @NotNull MapFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> mapFactory
+            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig
     ) {
         Timer timer = MetricsFactory.getMetrics().getTimer("analytics.map");
 
@@ -346,9 +342,9 @@ public class AnalyticsContext {
     }
 
     public <InputKey, InputValue, OutputKey, OutputValue, CombinerValue> void reduce(
-            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig,
+            @NotNull ReducerFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> reducerFactory,
             @NotNull CacheConfiguration<OutputKey, CombinerValue> outputDataConfig,
-            @NotNull ReducerFactory<InputKey, InputValue, OutputKey, OutputValue, CombinerValue> reducerFactory
+            @NotNull CacheConfiguration<InputKey, InputValue> inputDataConfig
     ) {
         Timer timer = MetricsFactory.getMetrics().getTimer("analytics.reduce");
 
@@ -384,10 +380,11 @@ public class AnalyticsContext {
     }
 
     @NotNull
-    private static String getJobName(@NotNull Object rangeScanJobFactory) {
+    private static String getJobName(@NotNull ComputeTaskAdapter rangeScanJobFactory) {
         String className = rangeScanJobFactory.getClass()
-                                              .toString()
+                                              .getName()
                                               .toLowerCase();
+
         return String.format("job-%s-%s", className, UUID.randomUUID());
     }
 }
