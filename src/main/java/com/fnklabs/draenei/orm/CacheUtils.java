@@ -37,7 +37,7 @@ class CacheUtils {
         cacheCfg.setReadThrough(false);
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);
-        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(100000));
+        cacheCfg.setEvictionPolicy(new LruEvictionPolicy<>(5000));
         cacheCfg.setSwapEnabled(false);
         cacheCfg.setOffHeapMaxMemory(-1);
         return cacheCfg;
