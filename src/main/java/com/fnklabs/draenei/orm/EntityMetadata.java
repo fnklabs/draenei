@@ -191,6 +191,8 @@ class EntityMetadata {
 
                 String columnName = getColumnName(propertyDescriptor, columnAnnotation);
 
+                Verify.verifyNotNull(tableMetadata.getColumn(columnName), String.format("Column metadata `%s` not found", columnName));
+
                 ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, clazz, field.getType(), columnName, tableMetadata.getColumn(columnName).getType());
 
                 if (field.isAnnotationPresent(Enumerated.class)) {
@@ -229,7 +231,7 @@ class EntityMetadata {
             }
         } catch (NoSuchFieldException e) {
             if (!StringUtils.equals("class", propertyDescriptor.getDisplayName())) {
-                LOGGER.warn("Can't get field", e);
+//                LOGGER.warn("Can't get field", e);
             }
         }
 

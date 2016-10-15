@@ -202,7 +202,7 @@ public class CassandraClient {
     public TableMetadata getTableMetadata(@NotNull String keyspace, @NotNull String tablename) {
         TableMetadata tableMetadata = getKeyspaceMetadata(keyspace).getTable(tablename);
 
-        Verify.verifyNotNull(tableMetadata, String.format("Table metadata is null %s", tablename));
+        Verify.verifyNotNull(tableMetadata, String.format("Table metadata is null `%s`.`%s`", keyspace, tablename));
 
         return tableMetadata;
     }
