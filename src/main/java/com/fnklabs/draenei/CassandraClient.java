@@ -1,29 +1,7 @@
 package com.fnklabs.draenei;
 
-import com.datastax.driver.core.AtomicMonotonicTimestampGenerator;
-import com.datastax.driver.core.BoundStatement;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.Host;
-import com.datastax.driver.core.KeyspaceMetadata;
-import com.datastax.driver.core.Metadata;
-import com.datastax.driver.core.PoolingOptions;
-import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ProtocolVersion;
-import com.datastax.driver.core.QueryOptions;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.ResultSetFuture;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.SocketOptions;
-import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.TableMetadata;
-import com.datastax.driver.core.TokenRange;
-import com.datastax.driver.core.policies.ConstantReconnectionPolicy;
-import com.datastax.driver.core.policies.DowngradingConsistencyRetryPolicy;
-import com.datastax.driver.core.policies.LoadBalancingPolicy;
-import com.datastax.driver.core.policies.LoggingRetryPolicy;
-import com.datastax.driver.core.policies.RoundRobinPolicy;
-import com.datastax.driver.core.policies.TokenAwarePolicy;
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.policies.*;
 import com.fnklabs.metrics.Metrics;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
@@ -34,12 +12,10 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.commons.lang3.StringUtils;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -87,8 +63,8 @@ public class CassandraClient {
      */
     public CassandraClient(@Nullable String username,
                            @Nullable String password,
-                           @NotNull String defaultKeyspace,
-                           @NotNull String hosts) {
+                           String defaultKeyspace,
+                           String hosts) {
         this(username, password, defaultKeyspace, hosts, 9042);
 
     }
@@ -106,8 +82,8 @@ public class CassandraClient {
      */
     public CassandraClient(@Nullable String username,
                            @Nullable String password,
-                           @NotNull String defaultKeyspace,
-                           @NotNull String hosts,
+                           String defaultKeyspace,
+                           String hosts,
                            int port) {
 
 
@@ -156,7 +132,7 @@ public class CassandraClient {
      *
      * @return TokenRanges by host
      */
-    public Map<TokenRange, Set<HostAndPort>> getTokensOwner(@NotNull String keyspace) {
+    public Map<TokenRange, Set<HostAndPort>> getTokensOwner(String keyspace) {
         Map<TokenRange, Set<HostAndPort>> tokenRanges = new HashMap<>();
 
         for (Host host : getMembers()) {
@@ -180,12 +156,12 @@ public class CassandraClient {
         return tokenRanges;
     }
 
-    @NotNull
-    public KeyspaceMetadata getKeyspaceMetadata(@NotNull String keyspace) {
+
+    public KeyspaceMetadata getKeyspaceMetadata(String keyspace) {
         return getCluster().getMetadata().getKeyspace(keyspace);
     }
 
-    @NotNull
+
     public String getDefaultKeyspace() {
         return defaultKeyspace;
     }
@@ -198,8 +174,8 @@ public class CassandraClient {
                            .collect(Collectors.toList());
     }
 
-    @NotNull
-    public TableMetadata getTableMetadata(@NotNull String keyspace, @NotNull String tablename) {
+
+    public TableMetadata getTableMetadata(String keyspace, String tablename) {
         TableMetadata tableMetadata = getKeyspaceMetadata(keyspace).getTable(tablename);
 
         Verify.verifyNotNull(tableMetadata, String.format("Table metadata is null `%s`.`%s`", keyspace, tablename));
@@ -207,8 +183,8 @@ public class CassandraClient {
         return tableMetadata;
     }
 
-    @NotNull
-    public PreparedStatement prepare(@NotNull String keyspace, @NotNull String query) {
+
+    public PreparedStatement prepare(String keyspace, String query) {
         return preparedStatementsMap.computeIfAbsent(new SessionQuery(keyspace, query), new ComputePreparedStatement());
     }
 
@@ -219,7 +195,7 @@ public class CassandraClient {
      *
      * @return Result set
      */
-    public ResultSet execute(@NotNull String query) {
+    public ResultSet execute(String query) {
         return execute(defaultKeyspace, query);
     }
 
@@ -230,7 +206,7 @@ public class CassandraClient {
      *
      * @return Result set
      */
-    public ResultSet execute(@NotNull String keyspace, @NotNull String query) {
+    public ResultSet execute(String keyspace, String query) {
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT.name()).inc();
 
         Timer time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE.name());
@@ -248,7 +224,7 @@ public class CassandraClient {
      *
      * @return Execution result set
      */
-    public ResultSet execute(@NotNull Statement statement) {
+    public ResultSet execute(Statement statement) {
         Timer executeTimer = MetricsFactory.getMetrics().getTimer("cassandra.execute");
 
         try {
@@ -267,7 +243,7 @@ public class CassandraClient {
      *
      * @return Execution result set
      */
-    public ResultSet execute(String keyspace, @NotNull Statement statement) {
+    public ResultSet execute(String keyspace, Statement statement) {
         Timer time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE.name());
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_QUERIES_COUNT.name()).inc();
@@ -286,8 +262,8 @@ public class CassandraClient {
      *
      * @return ResultSetFuture
      */
-    @NotNull
-    public ResultSetFuture executeAsync(@NotNull Statement statement) {
+
+    public ResultSetFuture executeAsync(Statement statement) {
         return executeAsync(defaultKeyspace, statement);
     }
 
@@ -298,8 +274,8 @@ public class CassandraClient {
      *
      * @return ResultSetFuture
      */
-    @NotNull
-    public ResultSetFuture executeAsync(@NotNull String keyspace, @NotNull Statement statement) {
+
+    public ResultSetFuture executeAsync(String keyspace, Statement statement) {
         Timer time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE_ASYNC.name());
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES.name()).inc();
@@ -321,7 +297,7 @@ public class CassandraClient {
      *
      * @return ResultSetFuture
      */
-    public ResultSetFuture executeAsync(@NotNull String query) {
+    public ResultSetFuture executeAsync(String query) {
         return executeAsync(defaultKeyspace, query);
     }
 
@@ -332,7 +308,7 @@ public class CassandraClient {
      *
      * @return ResultSetFuture
      */
-    public ResultSetFuture executeAsync(@NotNull String keyspace, @NotNull String query) {
+    public ResultSetFuture executeAsync(String keyspace, String query) {
         Timer time = getMetricsFactory().getTimer(MetricsType.CASSANDRA_EXECUTE_ASYNC.name());
 
         getMetricsFactory().getCounter(MetricsType.CASSANDRA_PROCESSING_QUERIES.name()).inc();
@@ -360,7 +336,7 @@ public class CassandraClient {
         return getCluster().getMetadata().getAllHosts();
     }
 
-    @NotNull
+
     protected SocketOptions getSocketOptions() {
         SocketOptions socketOptions = new SocketOptions();
         socketOptions.setConnectTimeoutMillis(CONNECT_TIMEOUT_MILLIS);
@@ -370,19 +346,19 @@ public class CassandraClient {
         return socketOptions;
     }
 
-    @NotNull
+
     protected QueryOptions getQueryOptions() {
         QueryOptions queryOptions = new QueryOptions();
         queryOptions.setConsistencyLevel(ConsistencyLevel.QUORUM);
         return queryOptions;
     }
 
-    @NotNull
+
     protected PoolingOptions getPoolingOptions() {
         return new PoolingOptions();
     }
 
-    @NotNull
+
     protected LoadBalancingPolicy getLoadBalancingPolicy() {
         RoundRobinPolicy roundRobinPolicy = new RoundRobinPolicy();
 
@@ -405,7 +381,7 @@ public class CassandraClient {
                            .collect(Collectors.toSet());
     }
 
-    private <T> void monitorFuture(@NotNull Timer timer, @NotNull ListenableFuture<T> future) {
+    private <T> void monitorFuture(Timer timer, ListenableFuture<T> future) {
         Futures.addCallback(future, new FutureCallback<T>() {
             @Override
             public void onSuccess(T result) {
@@ -435,7 +411,7 @@ public class CassandraClient {
      *
      * @return Session instance
      */
-    private Session getOrCreateSession(@NotNull String keyspace) {
+    private Session getOrCreateSession(String keyspace) {
         Timer timer = getMetricsFactory().getTimer("cassandraClient.getOrCreateSession");
 
         Session currentSession = sessionsByKeyspace.computeIfAbsent(keyspace, key -> {

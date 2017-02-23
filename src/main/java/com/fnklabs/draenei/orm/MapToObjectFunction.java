@@ -40,11 +40,8 @@ class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
                 ColumnMetadata columnMetadata = entityMetadata.getColumn(column.getName());
 
                 if (columnMetadata != null) {
-                    ByteBuffer data = row.getBytesUnsafe(column.getName());
-
-                    Object deserializedValue = columnMetadata.deserialize(data);
-
-                    columnMetadata.writeValue(instance, deserializedValue);
+                    Object value = row.get(column.getName(), columnMetadata.typeCodec());
+                    columnMetadata.writeValue(instance, value);
                 }
             }
 

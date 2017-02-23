@@ -5,13 +5,10 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/**
- * UDT
- */
-@Target(ElementType.TYPE)
+@Target(value = {ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
-public @interface UDT {
-    String keyspace() default "";
+public @interface Map {
+    Class elementKeyType();
 
-    String name();
+    Class elementValueType();
 }

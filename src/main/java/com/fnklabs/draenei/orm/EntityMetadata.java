@@ -1,15 +1,13 @@
 package com.fnklabs.draenei.orm;
 
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.TableMetadata;
-import com.datastax.driver.core.UserType;
+import com.datastax.driver.core.*;
 import com.fnklabs.draenei.CassandraClient;
+import com.fnklabs.draenei.orm.annotations.Collection;
 import com.fnklabs.draenei.orm.annotations.*;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.google.common.base.Verify;
+import com.google.common.reflect.TypeToken;
 import org.apache.commons.lang3.StringUtils;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +17,8 @@ import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -31,39 +27,39 @@ import java.util.stream.Collectors;
 class EntityMetadata {
     private static final Logger LOGGER = LoggerFactory.getLogger(EntityMetadata.class);
 
-    @NotNull
+
     private final String tableName;
 
-    @NotNull
+
     private final String keyspace;
 
     private final boolean compactStorage;
 
     private final int maxFetchSize;
 
-    @NotNull
+
     private final ConsistencyLevel readConsistencyLevel;
 
-    @NotNull
+
     private final ConsistencyLevel writeConsistencyLevel;
 
-    @NotNull
+
     private final HashMap<String, ColumnMetadata> columnsMetadata = new HashMap<>();
     /**
      * DataStax table metadata need to serialize and deserialize data
      */
-    @NotNull
+
     private final TableMetadata tableMetadata;
 
-    @NotNull
+
     private final HashMap<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
 
-    private EntityMetadata(@NotNull String tableName,
-                           @NotNull String keyspace, boolean compactStorage,
+    private EntityMetadata(String tableName,
+                           String keyspace, boolean compactStorage,
                            int maxFetchSize,
-                           @NotNull ConsistencyLevel readConsistencyLevel,
-                           @NotNull ConsistencyLevel writeConsistencyLevel,
-                           @NotNull TableMetadata tableMetadata) {
+                           ConsistencyLevel readConsistencyLevel,
+                           ConsistencyLevel writeConsistencyLevel,
+                           TableMetadata tableMetadata) {
         this.tableName = tableName;
         this.keyspace = keyspace;
         this.compactStorage = compactStorage;
@@ -84,7 +80,7 @@ class EntityMetadata {
      *
      * @throws MetadataException
      */
-    static <V> EntityMetadata buildEntityMetadata(@NotNull Class<V> clazz, @NotNull CassandraClient cassandraClient) throws MetadataException {
+    static <V> EntityMetadata buildEntityMetadata(Class<V> clazz, CassandraClient cassandraClient) throws MetadataException {
         Table tableAnnotation = clazz.getAnnotation(Table.class);
 
         if (tableAnnotation == null) {
@@ -129,45 +125,6 @@ class EntityMetadata {
         return entityMetadata;
     }
 
-    static ColumnMetadata buildUdtColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Class udtClassType, @NotNull UserType udtType) {
-        try {
-            Field field = udtClassType.getDeclaredField(propertyDescriptor.getName());
-
-            if (field.isAnnotationPresent(Column.class)) {
-
-                Column columnAnnotation = field.getDeclaredAnnotation(Column.class);
-
-                String columnName = getColumnName(propertyDescriptor, columnAnnotation);
-
-                try {
-                    DataType fieldType = udtType.getFieldType(columnName);
-
-                    ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, udtClassType, udtClassType, columnName, fieldType);
-
-                    if (field.isAnnotationPresent(Enumerated.class)) {
-                        Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
-
-                        columnMetadata = new EnumeratedMetadata(columnMetadata, enumeratedAnnotation.enumType());
-                    }
-
-
-                    return columnMetadata;
-                } catch (IllegalArgumentException e) {
-                    LOGGER.warn(String.format("Can't get dataType field '%s' for UDT: '%s'", columnName, udtClassType.getName()), e);
-
-                    throw new MetadataException(e);
-                }
-
-            }
-        } catch (NoSuchFieldException e) {
-            if (!StringUtils.equals("class", propertyDescriptor.getDisplayName())) {
-                LOGGER.warn("Can't get field", e);
-            }
-        }
-
-        return null;
-    }
-
     /**
      * Build column metadata from field
      *
@@ -177,10 +134,10 @@ class EntityMetadata {
      * @return Column metadata or null if property is not column
      */
     @Nullable
-    static ColumnMetadata buildColumnMetadata(@NotNull PropertyDescriptor propertyDescriptor,
-                                              @NotNull Class clazz,
-                                              @NotNull CassandraClient cassandraClient,
-                                              @NotNull TableMetadata tableMetadata) {
+    static ColumnMetadata buildColumnMetadata(PropertyDescriptor propertyDescriptor,
+                                              Class clazz,
+                                              CassandraClient cassandraClient,
+                                              TableMetadata tableMetadata) {
 
         try {
             Field field = clazz.getDeclaredField(propertyDescriptor.getName());
@@ -193,33 +150,16 @@ class EntityMetadata {
 
                 Verify.verifyNotNull(tableMetadata.getColumn(columnName), String.format("Column metadata `%s` not found", columnName));
 
-                ColumnMetadata columnMetadata = new BaseColumnMetadata(propertyDescriptor, clazz, field.getType(), columnName, tableMetadata.getColumn(columnName).getType());
+                DataType dataType = tableMetadata.getColumn(columnName).getType();
 
-                if (field.isAnnotationPresent(Enumerated.class)) {
-                    Enumerated enumeratedAnnotation = field.getDeclaredAnnotation(Enumerated.class);
-
-                    columnMetadata = new EnumeratedMetadata(columnMetadata, enumeratedAnnotation.enumType());
-                }
-                if (field.isAnnotationPresent(UDTColumn.class)) {
-                    UDTColumn udtColumnAnnotation = field.getDeclaredAnnotation(UDTColumn.class);
-
-                    Class udtClassType = udtColumnAnnotation.udtType();
-
-                    if (udtClassType.isAnnotationPresent(UDT.class)) {
-                        UDT declaredAnnotation = (UDT) udtClassType.getDeclaredAnnotation(UDT.class);
-
-                        String keyspace = StringUtils.isEmpty(declaredAnnotation.keyspace()) ? cassandraClient.getDefaultKeyspace() : declaredAnnotation.keyspace();
-
-                        UserType userType = cassandraClient.getKeyspaceMetadata(keyspace)
-                                                           .getUserType(declaredAnnotation.name());
-
-                        Verify.verifyNotNull(userType);
-
-                        columnMetadata = new UserDataTypeMetadata(udtColumnAnnotation.udtType(), userType, columnMetadata);
-                    }
-
-
-                }
+                ColumnMetadata columnMetadata = new BaseColumnMetadata(
+                        propertyDescriptor,
+                        clazz,
+                        field.getType(),
+                        columnName,
+                        dataType,
+                        getTypeCode(dataType, field)
+                );
 
                 if (field.isAnnotationPresent(PrimaryKey.class)) {
                     PrimaryKey primaryKeyAnnotation = field.getDeclaredAnnotation(PrimaryKey.class);
@@ -238,7 +178,54 @@ class EntityMetadata {
         return null;
     }
 
-    @NotNull
+    /**
+     * Get TypeCoded for provided Entity field
+     *
+     * @param dataType DataType
+     * @param field    Entity Field type
+     *
+     * @return
+     */
+    private static TypeCodec getTypeCode(DataType dataType, Field field) {
+        if (field.isAnnotationPresent(Enumerated.class)) {
+            Enumerated enumerated = field.getDeclaredAnnotation(Enumerated.class);
+
+            Class<Enum<?>> enumType = enumerated.enumType();
+
+            CodecRegistry.DEFAULT_INSTANCE.register(new EnumCodec(enumType));
+        }
+
+        if (field.isAnnotationPresent(Collection.class)) {
+            Collection collection = field.getDeclaredAnnotation(Collection.class);
+
+
+            TypeToken typeToken = collectionTypeToken(field.getType(), collection.elementType());
+
+            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
+        }
+
+        if (field.isAnnotationPresent(com.fnklabs.draenei.orm.annotations.Map.class)) {
+
+            com.fnklabs.draenei.orm.annotations.Map map = field.getDeclaredAnnotation(com.fnklabs.draenei.orm.annotations.Map.class);
+
+            TypeToken typeToken = TypeTokens.mapOf(map.elementKeyType(), map.elementValueType());
+
+            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
+        }
+
+        return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, field.getType());
+    }
+
+    private static TypeToken collectionTypeToken(Class<?> fieldType, Class<?> elementType) {
+        if (fieldType.isAssignableFrom(Set.class)) {
+            return TypeTokens.setOf(elementType);
+        } else if (fieldType.isAssignableFrom(List.class)) {
+            return TypeTokens.listOf(elementType);
+        } else {
+            throw new RuntimeException("Invalid collection type");
+        }
+    }
+
     String getKeyspace() {
         return keyspace;
     }
@@ -266,7 +253,7 @@ class EntityMetadata {
                               .collect(Collectors.toList());
     }
 
-    @NotNull
+
     String getTableName() {
         return tableName;
     }
@@ -287,12 +274,12 @@ class EntityMetadata {
         return tableMetadata.getPrimaryKey().size();
     }
 
-    @NotNull
+
     ConsistencyLevel getWriteConsistencyLevel() {
         return writeConsistencyLevel;
     }
 
-    @NotNull
+
     ConsistencyLevel getReadConsistencyLevel() {
         return readConsistencyLevel;
     }
@@ -310,7 +297,7 @@ class EntityMetadata {
         return tableMetadata.getClusteringColumns().size();
     }
 
-    private void addColumnMetadata(@NotNull ColumnMetadata columnMetadata) {
+    private void addColumnMetadata(ColumnMetadata columnMetadata) {
         columnsMetadata.put(columnMetadata.getName(), columnMetadata);
 
         if (columnMetadata instanceof PrimaryKeyMetadata) {
@@ -326,7 +313,7 @@ class EntityMetadata {
      *
      * @throws MetadataException if invalid metadada was provided
      */
-    private static void validate(@NotNull EntityMetadata entityMetadata) {
+    private static void validate(EntityMetadata entityMetadata) {
         if (StringUtils.isEmpty(entityMetadata.getTableName())) {
             throw new MetadataException(String.format("Invalid table name: \"%s\"", entityMetadata.getTableName()));
         }
@@ -336,7 +323,7 @@ class EntityMetadata {
         }
     }
 
-    private static String getColumnName(@NotNull PropertyDescriptor propertyDescriptor, @NotNull Column columnAnnotation) {
+    private static String getColumnName(PropertyDescriptor propertyDescriptor, Column columnAnnotation) {
         String columnName = columnAnnotation.name();
 
         if (StringUtils.isEmpty(columnName)) {

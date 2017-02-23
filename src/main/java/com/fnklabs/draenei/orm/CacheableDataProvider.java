@@ -40,10 +40,10 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     private final IgniteCache<Long, Entry> cache;
 
-    public CacheableDataProvider(@NotNull Class<Entry> clazz,
-                                 @NotNull CassandraClient cassandraClient,
-                                 @NotNull Ignite ignite,
-                                 @NotNull ExecutorService executorService) {
+    public CacheableDataProvider(Class<Entry> clazz,
+                                 CassandraClient cassandraClient,
+                                 Ignite ignite,
+                                 ExecutorService executorService) {
         super(clazz, cassandraClient, executorService);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
@@ -127,7 +127,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return Return value from entry processor
      */
-    public <ReturnValue> ReturnValue executeOnEntry(@NotNull Entry entry, @NotNull CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
+    public <ReturnValue> ReturnValue executeOnEntry(Entry entry, CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
         long key = buildHashCode(entry);
 
         if (!cache.containsKey(key)) {
@@ -137,9 +137,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
             Optional<Entry> first = entries.stream().findFirst();
 
-            if (first.isPresent()) {
-                cache.putIfAbsent(key, first.get());
-            }
+            first.ifPresent(entry1 -> cache.putIfAbsent(key, entry1));
         }
 
         return cache.invoke(key, entryProcessor);
@@ -153,7 +151,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      * @return Future for put to cache operation
      */
     @Override
-    public ListenableFuture<Boolean> saveAsync(@NotNull Entry entity) {
+    public ListenableFuture<Boolean> saveAsync(Entry entity) {
         Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE.name());
 
         long cacheKey = buildHashCode(entity);
@@ -172,7 +170,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return Future for remove from cache operation
      */
-    public ListenableFuture<Boolean> removeAsync(@NotNull Entry entity) {
+    public ListenableFuture<Boolean> removeAsync(Entry entity) {
 
         Timer timer = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE.name());
 
@@ -201,7 +199,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         return cache.getName();
     }
 
-    private void initializeEventListener(@NotNull Ignite ignite) {
+    private void initializeEventListener(Ignite ignite) {
         ignite.events()
               .localListen(
                       new LocalCacheEventListener(),

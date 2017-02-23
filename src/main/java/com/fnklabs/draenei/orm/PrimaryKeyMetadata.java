@@ -1,5 +1,6 @@
 package com.fnklabs.draenei.orm;
 
+import com.datastax.driver.core.TypeCodec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -69,12 +70,7 @@ class PrimaryKeyMetadata implements ColumnMetadata {
     }
 
     @Override
-    public ByteBuffer serialize(Object value) {
-        return columnMetadata.serialize(value);
-    }
-
-    @Override
-    public <T> T deserialize(@Nullable ByteBuffer data) {
-        return columnMetadata.deserialize(data);
+    public <FieldType> TypeCodec<FieldType> typeCodec() {
+        return columnMetadata.typeCodec();
     }
 }

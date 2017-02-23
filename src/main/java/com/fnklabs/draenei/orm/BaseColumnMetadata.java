@@ -1,8 +1,9 @@
 package com.fnklabs.draenei.orm;
 
 
+import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.DataType;
-import com.datastax.driver.core.ProtocolVersion;
+import com.datastax.driver.core.TypeCodec;
 import com.fnklabs.draenei.orm.exception.MetadataException;
 import com.google.common.base.MoreObjects;
 import org.jetbrains.annotations.NotNull;
@@ -13,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.ByteBuffer;
 
 /**
  * Column metadata
@@ -34,19 +34,17 @@ class BaseColumnMetadata implements ColumnMetadata {
     /**
      * Field read method
      */
-    @NotNull
+
     private final Method readMethod;
 
     /**
      * Field write method
      */
-    @NotNull
     private final Method writeMethod;
 
-    /**
-     * DataStax column metadata to serialize and deserialize data
-     */
-    private final DataType columnDataType;
+    private final DataType dataType;
+
+    private final TypeCodec typeCodec;
 
     /**
      * @param propertyDescriptor Field property descriptor
@@ -54,12 +52,15 @@ class BaseColumnMetadata implements ColumnMetadata {
      * @param type               Column java class type
      * @param name               Column name
      * @param columnDataType     Column DataType
+     * @param typeCodec
      */
     BaseColumnMetadata(PropertyDescriptor propertyDescriptor,
                        Class entityClassType,
                        Class type,
                        String name,
-                       DataType columnDataType) {
+                       DataType columnDataType,
+                       TypeCodec typeCodec) {
+
 
         if (propertyDescriptor.getReadMethod() == null) {
             throw new MetadataException(String.format("Can't retrieve read method for %s#%s", entityClassType.getName(), propertyDescriptor.getName()));
@@ -75,9 +76,10 @@ class BaseColumnMetadata implements ColumnMetadata {
 
         this.readMethod = propertyDescriptor.getReadMethod();
         this.writeMethod = propertyDescriptor.getWriteMethod();
-        this.columnDataType = columnDataType;
         this.type = type;
         this.name = name;
+        this.dataType = columnDataType;
+        this.typeCodec = typeCodec;
     }
 
     /**
@@ -106,6 +108,10 @@ class BaseColumnMetadata implements ColumnMetadata {
 
         Method writeMethod = getWriteMethod();
 
+        if (!writeMethod.isAccessible()) {
+            writeMethod.setAccessible(true);
+        }
+
         try {
             writeMethod.invoke(entity, value);
         } catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException e) {
@@ -121,6 +127,10 @@ class BaseColumnMetadata implements ColumnMetadata {
     public <FieldType> FieldType readValue(@NotNull Object object) {
         Method readMethod = getReadMethod();
 
+        if (!readMethod.isAccessible()) {
+            readMethod.setAccessible(true);
+        }
+
         try {
             return (FieldType) readMethod.invoke(object);
         } catch (IllegalAccessException | InvocationTargetException | ClassCastException e) {
@@ -130,36 +140,9 @@ class BaseColumnMetadata implements ColumnMetadata {
         return null;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public ByteBuffer serialize(Object value) {
-        if (value == null) {
-            return null;
-        }
-
-        return columnDataType.serialize(value, ProtocolVersion.NEWEST_SUPPORTED);
-    }
-
-    /**
-     * Deserialize data from cassandra to java type
-     *
-     * @param data Serialized cassandra type
-     * @param <T>  Entity class java type
-     *
-     * @return Deserialized object
-     */
-    @SuppressWarnings("Unchecked class type")
-    @Override
-    public <T> T deserialize(@Nullable ByteBuffer data) {
-        if (data == null) {
-            return null;
-        }
-
-        Object deserializedObject = columnDataType.deserialize(data, ProtocolVersion.NEWEST_SUPPORTED);
-
-        return (T) deserializedObject;
+    public <FieldType> TypeCodec<FieldType> typeCodec() {
+        return typeCodec;
     }
 
     @NotNull

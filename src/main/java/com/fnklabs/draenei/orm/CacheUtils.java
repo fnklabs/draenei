@@ -33,7 +33,7 @@ class CacheUtils {
         CacheConfiguration<Key, Entry> cacheCfg = new CacheConfiguration<>(cacheName);
         cacheCfg.setBackups(1);
         cacheCfg.setCacheMode(CacheMode.PARTITIONED);
-        cacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+        cacheCfg.setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL);
         cacheCfg.setReadThrough(false);
         cacheCfg.setWriteThrough(false);
         cacheCfg.setMemoryMode(CacheMemoryMode.ONHEAP_TIERED);

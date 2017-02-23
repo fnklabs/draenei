@@ -1,16 +1,16 @@
-apply plugin: 'java'
-apply plugin: 'idea'
-apply plugin: 'maven'
-apply plugin: 'signing'
+apply plugin: "java"
+apply plugin: "idea"
+apply plugin: "maven"
+apply plugin: "signing"
 
 if (hasProperty("teamcity")) {
     project.ext.buildVersion = teamcity["build.number"]
 } else {
-    project.ext.buildVersion = '0.3.3.2'
+    project.ext.buildVersion = "0.3.3.2"
 }
 
 version = project.ext.buildVersion
-group = 'com.fnklabs'
+group = "com.fnklabs"
 
 println("App module version:" + project.ext.buildVersion)
 
@@ -24,69 +24,80 @@ buildscript {
     repositories {
         mavenLocal()
         mavenCentral()
-        maven { url 'http://dl.bintray.com/jfrog/jfrog-jars' }
+        maven { url "http://dl.bintray.com/jfrog/jfrog-jars" }
     }
     dependencies {
-        classpath(group: 'org.jfrog.buildinfo', name: 'build-info-extractor-gradle', version: '2.2.4')
+        classpath(group: "org.jfrog.buildinfo", name: "build-info-extractor-gradle", version: "2.2.4")
     }
 }
 
 configurations {
-    compile.exclude module: 'slf4j-log4j12'
-    compile.exclude module: 'hibernate-validator'
+    compile.exclude module: "slf4j-log4j12"
+    compile.exclude module: "hibernate-validator"
+}
+
+ext {
+    vers = [
+            slf4j    : '1.7.22',
+            logback  : '1.2.1',
+            guava    : '18.0',
+            cassandra: '3.1.4',
+            ignite   : '1.8.0'
+    ]
 }
 
 dependencies {
-    testCompile 'junit:junit:4.12'
-    testCompile 'org.mockito:mockito-all:1.9.5'
-    testCompile 'org.openjdk.jmh:jmh-core:1.11.2'
-    testCompile 'org.openjdk.jmh:jmh-generator-annprocess:1.11.2'
+    testCompile "junit:junit:4.12"
+    testCompile "org.mockito:mockito-all:1.9.5"
+    testCompile "org.openjdk.jmh:jmh-core:1.11.2"
+    testCompile "org.openjdk.jmh:jmh-generator-annprocess:1.11.2"
 
-    compile 'com.intellij:annotations:12.0'
+    compile "com.intellij:annotations:12.0"
 
+    compile "com.datastax.cassandra:cassandra-driver-core:$vers.cassandra"
 
-    compile 'com.datastax.cassandra:cassandra-driver-core:2.1.9'
+    compile "org.slf4j:slf4j-api:$vers.slf4j"
+    compile "ch.qos.logback:logback-core:$vers.logback"
+    compile "ch.qos.logback:logback-classic:$vers.logback"
 
-    compile 'org.slf4j:slf4j-api:1.7.13'
-    compile 'ch.qos.logback:logback-core:1.1.3'
-    compile 'ch.qos.logback:logback-classic:1.1.3'
+    compile "com.google.guava:guava:$vers.guava"
 
-    compile 'com.google.guava:guava:18.0'
+    compile "commons-beanutils:commons-beanutils:1.9.2"
 
-    compile 'commons-beanutils:commons-beanutils:1.9.2'
+    compile "org.apache.commons:commons-math:2.2"
+    compile "org.apache.commons:commons-lang3:3.3.2"
 
-    compile 'org.apache.commons:commons-math:2.2'
-    compile 'org.apache.commons:commons-lang3:3.3.2'
-
-    compile 'org.apache.lucene.morphology:russian:1.1'
-    compile 'org.apache.lucene.morphology:english:1.1'
-
-
-    compile 'org.apache.ignite:ignite-core:1.8.0'
-    compile 'org.apache.ignite:ignite-slf4j:1.8.0'
-    compile 'org.apache.ignite:ignite-indexing:1.8.0'
+    compile "org.apache.lucene.morphology:russian:1.1"
+    compile "org.apache.lucene.morphology:english:1.1"
 
 
-    compile 'com.fnklabs:fnklabs-metrics-codahale:0.1.5'
-    compile 'com.fnklabs:fnklabs-metrics-core:0.1.5'
+    compile "org.apache.ignite:ignite-core:$vers.ignite"
+    compile "org.apache.ignite:ignite-slf4j:$vers.ignite"
+    compile "org.apache.ignite:ignite-indexing:$vers.ignite"
+
+
+    compile "com.fnklabs:fnklabs-metrics-codahale:0.1.5"
+    compile "com.fnklabs:fnklabs-metrics-core:0.1.5"
 }
 
+
+
 jar {
-    baseName = 'fnklabs-draenei'
+    baseName = "fnklabs-draenei"
     version = project.ext.buildVersion
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.1'
+    gradleVersion = "2.1"
 }
 
 task javadocJar(type: Jar) {
-    classifier = 'javadoc'
+    classifier = "javadoc"
     from javadoc
 }
 
 task sourcesJar(type: Jar) {
-    classifier = 'sources'
+    classifier = "sources"
     from sourceSets.main.allSource
 }
 
@@ -111,29 +122,29 @@ uploadArchives {
             }
 
             pom.project {
-                name 'draenei'
-                packaging 'jar'
-                description 'ORM for Cassandra but with distributed cache and analytics utils from package'
-                url 'https://github.com/fnklabs/draenei'
+                name "draenei"
+                packaging "jar"
+                description "ORM for Cassandra but with distributed cache and analytics utils from package"
+                url "https://github.com/fnklabs/draenei"
 
                 scm {
-                    url 'scm:git@github.com:fnklabs/draenei.git'
-                    connection 'scm:git@github.com:fnklabs/draenei.git'
-                    developerConnection 'scm:git@github.com:fnklabs/draenei.git'
+                    url "scm:git@github.com:fnklabs/draenei.git"
+                    connection "scm:git@github.com:fnklabs/draenei.git"
+                    developerConnection "scm:git@github.com:fnklabs/draenei.git"
                 }
 
                 licenses {
                     license {
-                        name 'The Apache Software License, Version 2.0'
-                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution 'repo'
+                        name "The Apache Software License, Version 2.0"
+                        url "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                        distribution "repo"
                     }
                 }
 
                 developers {
                     developer {
-                        id 'aysheka'
-                        name 'Alisher Alimov'
+                        id "aysheka"
+                        name "Alisher Alimov"
                     }
                 }
             }

@@ -38,24 +38,24 @@ public class DataProvider<V> {
      */
     private static final HashFunction HASH_FUNCTION = Hashing.murmur3_128();
 
-    @NotNull
+
     private static final com.fnklabs.metrics.Metrics METRICS = MetricsFactory.getMetrics();
     /**
      * Entity class
      */
-    @NotNull
+
     private final Class<V> clazz;
     /**
      * Current entity metadata
      */
-    @NotNull
+
     private final EntityMetadata entityMetadata;
-    @NotNull
+
     private final CassandraClient cassandraClient;
-    @NotNull
+
     private final Function<Row, V> mapToObjectFunction;
 
-    @NotNull
+
     private final ExecutorService executorService;
 
     /**
@@ -65,7 +65,7 @@ public class DataProvider<V> {
      * @param cassandraClient CassandraClient instance
      * @param executorService ExecutorService that will be used for processing ResultSetFuture to occupy CassandraDriver ThreadPool
      */
-    public DataProvider(@NotNull Class<V> clazz, @NotNull CassandraClient cassandraClient, @NotNull ExecutorService executorService) {
+    public DataProvider(Class<V> clazz, CassandraClient cassandraClient, ExecutorService executorService) {
         this.clazz = clazz;
         this.cassandraClient = cassandraClient;
         this.executorService = executorService;
@@ -76,6 +76,7 @@ public class DataProvider<V> {
     public void seek(Function<V, Boolean> function) {
         fetch(Collections.emptyList(), function);
     }
+
     /**
      * Save entity asynchronously
      *
@@ -83,7 +84,7 @@ public class DataProvider<V> {
      *
      * @return Operation status result
      */
-    public ListenableFuture<Boolean> saveAsync(@NotNull V entity) {
+    public ListenableFuture<Boolean> saveAsync(V entity) {
         Timer saveAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_SAVE.name());
 
         Insert insert = QueryBuilder.insertInto(getEntityMetadata().getTableName());
@@ -120,7 +121,7 @@ public class DataProvider<V> {
      *
      * @return Operation status result
      */
-    public Boolean save(@NotNull V entity) {
+    public Boolean save(V entity) {
         Timer saveAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_SAVE.name());
 
         Insert insert = QueryBuilder.insertInto(getEntityMetadata().getTableName());
@@ -155,7 +156,7 @@ public class DataProvider<V> {
      *
      * @return Operation status result
      */
-    public ListenableFuture<Boolean> removeAsync(@NotNull V entity) {
+    public ListenableFuture<Boolean> removeAsync(V entity) {
         Timer removeAsyncTimer = METRICS.getTimer(MetricsType.DATA_PROVIDER_REMOVE.name());
 
         Delete from = QueryBuilder.delete()
@@ -200,7 +201,7 @@ public class DataProvider<V> {
 
             Object value = primaryKeyMetadata.readValue(entity);
 
-            boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(value));
+            boundStatement.set(i, value, primaryKeyMetadata.getFieldType());
         }
 
         ResultSetFuture resultSetFuture = getCassandraClient().executeAsync(boundStatement);
@@ -367,7 +368,7 @@ public class DataProvider<V> {
      *
      * @return Cache key
      */
-    long buildHashCode(@NotNull V entity) {
+    long buildHashCode(V entity) {
         Timer timer = getMetrics().getTimer(MetricsType.DATA_PROVIDER_CREATE_KEY.name());
 
         List<Object> keys = getPrimaryKeys(entity);
@@ -379,8 +380,8 @@ public class DataProvider<V> {
         return hashCode;
     }
 
-    @NotNull
-    List<Object> getPrimaryKeys(@NotNull V entity) {
+
+    List<Object> getPrimaryKeys(V entity) {
         int primaryKeysSize = getEntityMetadata().getPrimaryKeysSize();
 
         List<Object> keys = new ArrayList<>();
@@ -413,7 +414,7 @@ public class DataProvider<V> {
         return buildHashCode(keyList);
     }
 
-    @NotNull
+
     protected Metrics getMetrics() {
         return METRICS;
     }
@@ -426,11 +427,11 @@ public class DataProvider<V> {
      * @return Mapped object or null if can't map fields
      */
     @Nullable
-    protected V mapToObject(@NotNull Row row) {
+    protected V mapToObject(Row row) {
         return mapToObjectFunction.apply(row);
     }
 
-    @NotNull
+
     private CassandraClient getCassandraClient() {
         return cassandraClient;
     }
@@ -504,7 +505,7 @@ public class DataProvider<V> {
         return loadedItems;
     }
 
-    @NotNull
+
     private BoundStatement getFetchBoundStatement(List<Object> keys) {
         BoundStatement boundStatement;
 
@@ -570,12 +571,12 @@ public class DataProvider<V> {
         return getEntityMetadata().getWriteConsistencyLevel();
     }
 
-    @NotNull
+
     private EntityMetadata getEntityMetadata() {
         return entityMetadata;
     }
 
-    @NotNull
+
     private ExecutorService getExecutorService() {
         return executorService;
     }
@@ -602,7 +603,7 @@ public class DataProvider<V> {
         }
     }
 
-    private void bindPrimaryKeysParameters(@NotNull List<Object> keys, @NotNull BoundStatement boundStatement) {
+    private void bindPrimaryKeysParameters(List<Object> keys, BoundStatement boundStatement) {
         for (int i = 0; i < keys.size(); i++) {
             Optional<PrimaryKeyMetadata> primaryKey = getEntityMetadata().getPrimaryKey(i);
 
@@ -612,7 +613,7 @@ public class DataProvider<V> {
 
             PrimaryKeyMetadata primaryKeyMetadata = primaryKey.get();
 
-            boundStatement.setBytesUnsafe(i, primaryKeyMetadata.serialize(keys.get(i)));
+            boundStatement.set(i, keys.get(i), primaryKeyMetadata.getFieldType());
         }
     }
 
@@ -625,8 +626,8 @@ public class DataProvider<V> {
      *
      * @return BoundStatement
      */
-    @NotNull
-    private BoundStatement createBoundStatement(@NotNull PreparedStatement prepare, @NotNull V entity, @NotNull List<ColumnMetadata> columns) {
+
+    private BoundStatement createBoundStatement(PreparedStatement prepare, V entity, List<ColumnMetadata> columns) {
         BoundStatement boundStatement = new BoundStatement(prepare);
         boundStatement.setConsistencyLevel(getEntityMetadata().getWriteConsistencyLevel());
 
@@ -635,7 +636,7 @@ public class DataProvider<V> {
 
             Object value = column.readValue(entity);
 
-            boundStatement.setBytesUnsafe(i, column.serialize(value));
+            boundStatement.set(i, value, column.typeCodec());
         }
 
         return boundStatement;
@@ -664,6 +665,4 @@ public class DataProvider<V> {
         DATA_PROVIDER_FETCH_RESULT_SET;
 
     }
-
-
 }

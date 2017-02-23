@@ -1,5 +1,6 @@
 package com.fnklabs.draenei.orm;
 
+import com.datastax.driver.core.TypeCodec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,7 +15,6 @@ interface ColumnMetadata {
      *
      * @return Column name
      */
-    @NotNull
     String getName();
 
     /**
@@ -22,7 +22,6 @@ interface ColumnMetadata {
      *
      * @return Class type of field
      */
-    @NotNull
     Class getFieldType();
 
     /**
@@ -31,7 +30,7 @@ interface ColumnMetadata {
      * @param entity Object on which write method will be invoked
      * @param value  Value to write
      */
-    void writeValue(@NotNull Object entity, @Nullable Object value);
+    void writeValue(Object entity, @Nullable Object value);
 
     /**
      * Read value from object
@@ -42,26 +41,15 @@ interface ColumnMetadata {
      * @return Object value or null
      */
     @Nullable
-    <FieldType> FieldType readValue(@NotNull Object object);
+    <FieldType> FieldType readValue(Object object);
+
 
     /**
-     * Serialize value to cassandra value
+     * Get type codec for this field
      *
-     * @param value Field value
+     * @param <FieldType> Field type
      *
-     * @return Serialized value
+     * @return
      */
-    ByteBuffer serialize(@Nullable Object value);
-
-    /**
-     * Deserialize cassandra value to {@code <T>}
-     *
-     * @param data Value that must be deserialized
-     * @param <T>  Class type to which value will be casted
-     *
-     * @return Deserialized value
-     *
-     * @throws ClassCastException if can't cast read value to FieldType
-     */
-    <T> T deserialize(@Nullable ByteBuffer data);
+    <FieldType> TypeCodec<FieldType> typeCodec();
 }
