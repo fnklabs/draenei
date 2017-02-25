@@ -1,30 +1,66 @@
 package com.fnklabs.draenei.orm;
 
-import com.fnklabs.draenei.orm.annotations.Column;
-import com.fnklabs.draenei.orm.annotations.PrimaryKey;
-import com.fnklabs.draenei.orm.annotations.Table;
-import com.fnklabs.draenei.orm.annotations.UDTColumn;
+import com.fnklabs.draenei.orm.annotations.*;
+import com.fnklabs.draenei.orm.annotations.Collection;
+import com.fnklabs.draenei.orm.annotations.Map;
 import com.google.common.base.MoreObjects;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
-@Table(name = "test")
+@Table(name = "test_entity")
 public class TestEntity implements Serializable {
     @PrimaryKey(order = 0)
     @Column(name = "id")
     private UUID id = UUID.randomUUID();
 
-    @Column(name = "address")
-    @UDTColumn(udtType = TestUdt.class)
-    private TestUdt testUdt;
+    @Column
+    private String username;
 
-    @Column(name = "address_2")
-    @UDTColumn(udtType = TestUdt.class)
-    private List<TestUdt> testUdtList = new ArrayList<>();
+    @Column
+    @Enumerated(enumType = Role.class)
+    private Role role;
+
+    @Column
+    @Collection(elementType = Role.class)
+    private Set<Role> roles;
+
+    @Column(name = "roles_map")
+    @Map(elementKeyType = Role.class, elementValueType = Role.class)
+    private java.util.Map<Role, Role> rolesMap;
+
+
+    public java.util.Map<Role, Role> getRolesMap() {
+        return rolesMap;
+    }
+
+    public void setRolesMap(java.util.Map<Role, Role> rolesMap) {
+        this.rolesMap = rolesMap;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
+    }
+
+    public Set<Role> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(Set<Role> roles) {
+        this.roles = roles;
+    }
 
     public UUID getId() {
         return id;
@@ -48,28 +84,15 @@ public class TestEntity implements Serializable {
         return false;
     }
 
-    public TestUdt getTestUdt() {
-        return testUdt;
-    }
-
-    public void setTestUdt(TestUdt testUdt) {
-        this.testUdt = testUdt;
-    }
-
-    public List<TestUdt> getTestUdtList() {
-        return testUdtList;
-    }
-
-    public void setTestUdtList(List<TestUdt> testUdtList) {
-        this.testUdtList = testUdtList;
-    }
-
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
                           .add("id", getId())
-                          .add("address", getTestUdt())
-                          .add("address_1", getTestUdtList())
                           .toString();
+    }
+
+    enum Role {
+        A,
+        B
     }
 }

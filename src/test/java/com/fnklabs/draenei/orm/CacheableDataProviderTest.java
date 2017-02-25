@@ -2,6 +2,9 @@ package com.fnklabs.draenei.orm;
 
 import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.draenei.ExecutorServiceFactory;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
@@ -29,13 +32,13 @@ public class CacheableDataProviderTest {
 
     @Before
     public void setUp() throws Exception {
-        cassandraClient = new CassandraClient("", "", "test", "10.211.55.19");
+        cassandraClient = new CassandraClient("cassandra", "", "test", "10.91.7.81");
         ignite = Ignition.start(getIgniteConfiguration());
     }
 
     @After
     public void tearDown() throws Exception {
-        cassandraClient.execute("truncate test");
+//        cassandraClient.execute("truncate test_entity");
 
         cassandraClient.close();
         cassandraClient = null;
@@ -55,6 +58,9 @@ public class CacheableDataProviderTest {
 
         testEntity = new TestEntity();
         testEntity.setId(UUID.randomUUID());
+        testEntity.setUsername("username");
+        testEntity.setRole(TestEntity.Role.A);
+        testEntity.setRoles(Sets.newHashSet(TestEntity.Role.A));
 
         Boolean result = cacheableDataProvider.saveAsync(testEntity).get(5, TimeUnit.SECONDS);
 
@@ -71,11 +77,14 @@ public class CacheableDataProviderTest {
     public void testSaveAsync() throws Exception {
         CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
 
-
         TestEntity testEntity = new TestEntity();
         testEntity.setId(UUID.randomUUID());
+        testEntity.setUsername("username");
+        testEntity.setRole(TestEntity.Role.A);
+        testEntity.setRoles(Sets.newHashSet(TestEntity.Role.A));
+        testEntity.setRolesMap(ImmutableMap.of(TestEntity.Role.A, TestEntity.Role.B));
 
-        Boolean result = cacheableDataProvider.saveAsync(testEntity).get(5, TimeUnit.SECONDS);
+        Boolean result = cacheableDataProvider.save(testEntity);
 
         Assert.assertTrue(result);
 
