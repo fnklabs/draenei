@@ -42,7 +42,8 @@ ext {
             logback  : '1.2.1',
             guava    : '18.0',
             cassandra: '3.1.4',
-            ignite   : '1.8.0'
+            ignite   : '1.8.0',
+            jodatime : '2.9.4'
     ]
 }
 
@@ -52,6 +53,7 @@ dependencies {
     testCompile "org.openjdk.jmh:jmh-core:1.11.2"
     testCompile "org.openjdk.jmh:jmh-generator-annprocess:1.11.2"
 
+    compile "joda-time:joda-time:$vers.jodatime"
     compile "com.intellij:annotations:12.0"
 
     compile "com.datastax.cassandra:cassandra-driver-core:$vers.cassandra"

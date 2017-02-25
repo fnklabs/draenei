@@ -2,6 +2,7 @@ package com.fnklabs.draenei;
 
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.policies.*;
+import com.fnklabs.draenei.orm.DateTimeCodec;
 import com.fnklabs.metrics.Metrics;
 import com.fnklabs.metrics.MetricsFactory;
 import com.fnklabs.metrics.Timer;
@@ -90,6 +91,7 @@ public class CassandraClient {
         Cluster.Builder builder = Cluster.builder()
                                          .withPort(port)
                                          .withProtocolVersion(ProtocolVersion.NEWEST_SUPPORTED)
+                                         .withCodecRegistry(CodecRegistry.DEFAULT_INSTANCE.register(new DateTimeCodec()))
                                          .withQueryOptions(getQueryOptions())
                                          .withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE))
                                          .withLoadBalancingPolicy(getLoadBalancingPolicy())
