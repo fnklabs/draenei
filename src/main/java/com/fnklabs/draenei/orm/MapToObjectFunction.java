@@ -32,8 +32,7 @@ class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
 
     @Override
     public ReturnValue apply(Row row) {
-        Timer timer = MetricsFactory.getMetrics().getTimer("dataprovider.map_to_object");
-        try {
+        try (Timer timer = MetricsFactory.getMetrics().getTimer("dataprovider.map_to_object")) {
             ReturnValue instance = clazz.newInstance();
 
             for (ColumnDefinitions.Definition column : row.getColumnDefinitions()) {
@@ -46,10 +45,8 @@ class MapToObjectFunction<ReturnValue> implements Function<Row, ReturnValue> {
             }
 
             return instance;
-        } catch (InstantiationException | IllegalAccessException e) {
+        } catch (Exception e) {
             LOGGER.warn("Cant retrieve entity instance", e);
-        } finally {
-            timer.stop();
         }
 
         return null;

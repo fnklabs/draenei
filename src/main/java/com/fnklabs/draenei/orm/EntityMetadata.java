@@ -44,18 +44,18 @@ class EntityMetadata {
     private final ConsistencyLevel writeConsistencyLevel;
 
 
-    private final HashMap<String, ColumnMetadata> columnsMetadata = new HashMap<>();
+    private final Map<String, ColumnMetadata> columnsMetadata = new HashMap<>();
+
+    private final Map<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
+
     /**
      * DataStax table metadata need to serialize and deserialize data
      */
-
     private final TableMetadata tableMetadata;
 
-
-    private final HashMap<Integer, PrimaryKeyMetadata> primaryKeys = new HashMap<>();
-
     private EntityMetadata(String tableName,
-                           String keyspace, boolean compactStorage,
+                           String keyspace,
+                           boolean compactStorage,
                            int maxFetchSize,
                            ConsistencyLevel readConsistencyLevel,
                            ConsistencyLevel writeConsistencyLevel,
@@ -178,54 +178,6 @@ class EntityMetadata {
         return null;
     }
 
-    /**
-     * Get TypeCoded for provided Entity field
-     *
-     * @param dataType DataType
-     * @param field    Entity Field type
-     *
-     * @return
-     */
-    private static TypeCodec getTypeCode(DataType dataType, Field field) {
-        if (field.isAnnotationPresent(Enumerated.class)) {
-            Enumerated enumerated = field.getDeclaredAnnotation(Enumerated.class);
-
-            Class<Enum<?>> enumType = enumerated.enumType();
-
-            CodecRegistry.DEFAULT_INSTANCE.register(new EnumCodec(enumType));
-        }
-
-        if (field.isAnnotationPresent(Collection.class)) {
-            Collection collection = field.getDeclaredAnnotation(Collection.class);
-
-
-            TypeToken typeToken = collectionTypeToken(field.getType(), collection.elementType());
-
-            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
-        }
-
-        if (field.isAnnotationPresent(com.fnklabs.draenei.orm.annotations.Map.class)) {
-
-            com.fnklabs.draenei.orm.annotations.Map map = field.getDeclaredAnnotation(com.fnklabs.draenei.orm.annotations.Map.class);
-
-            TypeToken typeToken = TypeTokens.mapOf(map.elementKeyType(), map.elementValueType());
-
-            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
-        }
-
-        return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, field.getType());
-    }
-
-    private static TypeToken collectionTypeToken(Class<?> fieldType, Class<?> elementType) {
-        if (fieldType.isAssignableFrom(Set.class)) {
-            return TypeTokens.setOf(elementType);
-        } else if (fieldType.isAssignableFrom(List.class)) {
-            return TypeTokens.listOf(elementType);
-        } else {
-            throw new RuntimeException("Invalid collection type");
-        }
-    }
-
     String getKeyspace() {
         return keyspace;
     }
@@ -253,7 +205,6 @@ class EntityMetadata {
                               .collect(Collectors.toList());
     }
 
-
     String getTableName() {
         return tableName;
     }
@@ -274,11 +225,9 @@ class EntityMetadata {
         return tableMetadata.getPrimaryKey().size();
     }
 
-
     ConsistencyLevel getWriteConsistencyLevel() {
         return writeConsistencyLevel;
     }
-
 
     ConsistencyLevel getReadConsistencyLevel() {
         return readConsistencyLevel;
@@ -303,6 +252,53 @@ class EntityMetadata {
         if (columnMetadata instanceof PrimaryKeyMetadata) {
             PrimaryKeyMetadata primaryKeyMetadata = (PrimaryKeyMetadata) columnMetadata;
             primaryKeys.put(primaryKeyMetadata.getOrder(), primaryKeyMetadata);
+        }
+    }
+
+    /**
+     * Get TypeCoded for provided Entity field
+     *
+     * @param dataType DataType
+     * @param field    Entity Field type
+     *
+     * @return
+     */
+    private static TypeCodec getTypeCode(DataType dataType, Field field) {
+        if (field.isAnnotationPresent(Enumerated.class)) {
+            Enumerated enumerated = field.getDeclaredAnnotation(Enumerated.class);
+
+            Class<Enum<?>> enumType = enumerated.enumType();
+
+            CodecRegistry.DEFAULT_INSTANCE.register(new EnumCodec(enumType));
+        }
+
+        if (field.isAnnotationPresent(Collection.class)) {
+            Collection collection = field.getDeclaredAnnotation(Collection.class);
+
+            TypeToken typeToken = collectionTypeToken(field.getType(), collection.elementType());
+
+            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
+        }
+
+        if (field.isAnnotationPresent(com.fnklabs.draenei.orm.annotations.Map.class)) {
+
+            com.fnklabs.draenei.orm.annotations.Map map = field.getDeclaredAnnotation(com.fnklabs.draenei.orm.annotations.Map.class);
+
+            TypeToken typeToken = TypeTokens.mapOf(map.elementKeyType(), map.elementValueType());
+
+            return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, typeToken);
+        }
+
+        return CodecRegistry.DEFAULT_INSTANCE.codecFor(dataType, field.getType());
+    }
+
+    private static TypeToken collectionTypeToken(Class<?> fieldType, Class<?> elementType) {
+        if (fieldType.isAssignableFrom(Set.class)) {
+            return TypeTokens.setOf(elementType);
+        } else if (fieldType.isAssignableFrom(List.class)) {
+            return TypeTokens.listOf(elementType);
+        } else {
+            throw new RuntimeException("Invalid collection type");
         }
     }
 

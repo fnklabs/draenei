@@ -1,9 +1,7 @@
 package com.fnklabs.draenei.orm;
 
 import com.fnklabs.draenei.CassandraClient;
-import com.fnklabs.draenei.ExecutorServiceFactory;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.ignite.Ignite;
@@ -27,28 +25,25 @@ import java.util.concurrent.TimeUnit;
 
 @Ignore
 public class CacheableDataProviderTest {
-    private CassandraClient cassandraClient;
+    private CassandraClientFactory cassandraClientFactory;
     private Ignite ignite;
 
     @Before
     public void setUp() throws Exception {
-        cassandraClient = new CassandraClient("cassandra", "", "test", "10.91.7.81");
+        cassandraClientFactory = new CassandraClientFactory("cassandra", "", "test", "10.91.7.81");
         ignite = Ignition.start(getIgniteConfiguration());
     }
 
     @After
     public void tearDown() throws Exception {
-//        cassandraClient.execute("truncate test_entity");
-
-        cassandraClient.close();
-        cassandraClient = null;
+        cassandraClientFactory.create().execute("truncate test_entity");
 
         ignite.close();
     }
 
     @Test
     public void testFindOneAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClientFactory, ignite);
 
         ListenableFuture<TestEntity> oneAsync = cacheableDataProvider.findOneAsync(UUID.randomUUID());
 
@@ -75,7 +70,7 @@ public class CacheableDataProviderTest {
 
     @Test
     public void testSaveAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClientFactory, ignite);
 
         TestEntity testEntity = new TestEntity();
         testEntity.setId(UUID.randomUUID());
@@ -98,7 +93,7 @@ public class CacheableDataProviderTest {
 
     @Test
     public void testRemoveAsync() throws Exception {
-        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClient, ignite, ExecutorServiceFactory.DEFAULT_EXECUTOR);
+        CacheableDataProvider<TestEntity> cacheableDataProvider = new CacheableDataProvider<>(TestEntity.class, cassandraClientFactory, ignite);
 
 
         TestEntity testEntity = new TestEntity();

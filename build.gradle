@@ -43,7 +43,8 @@ ext {
             guava    : '18.0',
             cassandra: '3.1.4',
             ignite   : '1.8.0',
-            jodatime : '2.9.4'
+            jodatime : '2.9.4',
+            metrics  : '0.1.14',
     ]
 }
 
@@ -78,8 +79,8 @@ dependencies {
     compile "org.apache.ignite:ignite-indexing:$vers.ignite"
 
 
-    compile "com.fnklabs:fnklabs-metrics-codahale:0.1.5"
-    compile "com.fnklabs:fnklabs-metrics-core:0.1.5"
+    compile "com.fnklabs:fnklabs-metrics-codahale:$vers.metrics"
+    compile "com.fnklabs:fnklabs-metrics-core:$vers.metrics"
 }
 
 

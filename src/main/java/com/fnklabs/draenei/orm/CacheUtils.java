@@ -8,6 +8,8 @@ import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
+
 /**
  * Cache utils
  */
@@ -51,7 +53,7 @@ class CacheUtils {
      *
      * @return Cache Configuration for specified entity class
      */
-    static <Entry> CacheConfiguration<Long, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass) {
+    static <Entry> CacheConfiguration<List, Entry> getDefaultCacheConfiguration(Class<Entry> entityClass) {
         return getDefaultCacheConfiguration(getCacheName(entityClass));
     }
 }

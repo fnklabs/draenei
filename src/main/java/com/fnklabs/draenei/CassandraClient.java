@@ -52,6 +52,8 @@ public class CassandraClient {
 
     private final Cluster cluster;
 
+    private final Builder builder;
+
     /**
      * Construct cassandra client
      *
@@ -67,7 +69,6 @@ public class CassandraClient {
                            String defaultKeyspace,
                            String hosts) {
         this(username, password, defaultKeyspace, hosts, 9042);
-
     }
 
     /**
@@ -86,22 +87,21 @@ public class CassandraClient {
                            String defaultKeyspace,
                            String hosts,
                            int port) {
-
-
-        Cluster.Builder builder = Cluster.builder()
-                                         .withPort(port)
-                                         .withProtocolVersion(ProtocolVersion.NEWEST_SUPPORTED)
-                                         .withCodecRegistry(CodecRegistry.DEFAULT_INSTANCE.register(new DateTimeCodec()))
-                                         .withQueryOptions(getQueryOptions())
-                                         .withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE))
-                                         .withLoadBalancingPolicy(getLoadBalancingPolicy())
-                                         .withReconnectionPolicy(new ConstantReconnectionPolicy(RECONNECTION_DELAY_TIME))
-                                         .withPoolingOptions(getPoolingOptions())
-                                         .withSocketOptions(getSocketOptions())
-                                         .withTimestampGenerator(new AtomicMonotonicTimestampGenerator());
+        builder = new Builder();
+        builder.withDefaultKeyspace(defaultKeyspace)
+               .withPort(port)
+               .withProtocolVersion(ProtocolVersion.NEWEST_SUPPORTED)
+               .withCodecRegistry(CodecRegistry.DEFAULT_INSTANCE.register(new DateTimeCodec()))
+               .withQueryOptions(getQueryOptions())
+               .withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE))
+               .withLoadBalancingPolicy(getLoadBalancingPolicy())
+               .withReconnectionPolicy(new ConstantReconnectionPolicy(RECONNECTION_DELAY_TIME))
+               .withPoolingOptions(getPoolingOptions())
+               .withSocketOptions(getSocketOptions())
+               .withTimestampGenerator(new AtomicMonotonicTimestampGenerator());
 
         if (!StringUtils.isEmpty(username) && !StringUtils.isEmpty(password)) {
-            builder = builder.withCredentials(username, password);
+            builder.withCredentials(username, password);
         }
 
         String[] hostList = StringUtils.split(hosts, ",");
@@ -125,6 +125,10 @@ public class CassandraClient {
             LOGGER.warn("Cant build cluster", e);
             throw e;
         }
+    }
+
+    public Builder builder() {
+        return this.builder;
     }
 
     /**
@@ -158,11 +162,9 @@ public class CassandraClient {
         return tokenRanges;
     }
 
-
     public KeyspaceMetadata getKeyspaceMetadata(String keyspace) {
         return getCluster().getMetadata().getKeyspace(keyspace);
     }
-
 
     public String getDefaultKeyspace() {
         return defaultKeyspace;
@@ -176,7 +178,6 @@ public class CassandraClient {
                            .collect(Collectors.toList());
     }
 
-
     public TableMetadata getTableMetadata(String keyspace, String tablename) {
         TableMetadata tableMetadata = getKeyspaceMetadata(keyspace).getTable(tablename);
 
@@ -184,7 +185,6 @@ public class CassandraClient {
 
         return tableMetadata;
     }
-
 
     public PreparedStatement prepare(String keyspace, String query) {
         return preparedStatementsMap.computeIfAbsent(new SessionQuery(keyspace, query), new ComputePreparedStatement());
@@ -338,7 +338,6 @@ public class CassandraClient {
         return getCluster().getMetadata().getAllHosts();
     }
 
-
     protected SocketOptions getSocketOptions() {
         SocketOptions socketOptions = new SocketOptions();
         socketOptions.setConnectTimeoutMillis(CONNECT_TIMEOUT_MILLIS);
@@ -348,18 +347,15 @@ public class CassandraClient {
         return socketOptions;
     }
 
-
     protected QueryOptions getQueryOptions() {
         QueryOptions queryOptions = new QueryOptions();
         queryOptions.setConsistencyLevel(ConsistencyLevel.QUORUM);
         return queryOptions;
     }
 
-
     protected PoolingOptions getPoolingOptions() {
         return new PoolingOptions();
     }
-
 
     protected LoadBalancingPolicy getLoadBalancingPolicy() {
         RoundRobinPolicy roundRobinPolicy = new RoundRobinPolicy();
@@ -444,6 +440,16 @@ public class CassandraClient {
         CASSANDRA_QUERIES_ERRORS,
         CASSANDRA_PROCESSING_QUERIES,
         CASSANDRA_EXECUTE_ASYNC, CASSANDRA_PREPARE_STMT,
+    }
+
+    public static class Builder extends Cluster.Builder {
+        private String defaultKeyspace;
+
+        public Builder withDefaultKeyspace(String defaultKeyspace) {
+            this.defaultKeyspace = defaultKeyspace;
+
+            return this;
+        }
     }
 
     private static class SessionQuery {

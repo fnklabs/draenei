@@ -1,34 +1,25 @@
 package com.fnklabs.draenei.orm;
 
 
-import com.fnklabs.draenei.CassandraClient;
 import com.fnklabs.metrics.Timer;
-import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CacheEntryProcessor;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.events.CacheEvent;
-import org.apache.ignite.events.Event;
-import org.apache.ignite.events.EventType;
-import org.apache.ignite.lang.IgnitePredicate;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
 
 /**
  * DataProvider that working through cache layer
  * <p>
- * Current implementation doesn't guarantee full data consistency because it write data into persistent storage asynchronously in background and old record can rewrite new record
- * in  storage.
+ * Current implementation doesn't guarantee full data consistency because it write data into persistent storage asynchronously in background and old record can
+ * rewrite new record in  storage.
  * <p>
  * Ignite must be configured to process cache eventType: {@code org.apache.ignite.configuration.IgniteConfiguration#setIncludeEventTypes(org.apache.ignite.events.EventType.EVTS_CACHE)}
  *
@@ -38,79 +29,33 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CacheableDataProvider.class);
 
-    private final IgniteCache<Long, Entry> cache;
+    private final IgniteCache<List, Entry> cache;
 
     public CacheableDataProvider(Class<Entry> clazz,
-                                 CassandraClient cassandraClient,
-                                 Ignite ignite,
-                                 ExecutorService executorService) {
-        super(clazz, cassandraClient, executorService);
+                                 CassandraClientFactory cassandraClientFactory,
+                                 Ignite ignite) {
+        super(clazz, cassandraClientFactory);
 
         cache = ignite.getOrCreateCache(getCacheConfiguration());
-
-        initializeEventListener(ignite);
     }
 
     @Override
     public ListenableFuture<Entry> findOneAsync(Object... keys) {
-        Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name());
-
-        long cacheKey = buildHashCode(keys);
-
-        Entry entry = cache.get(cacheKey);
-
-        if (entry != null) {
-            getMetrics().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS.name()).inc();
-
-            return Futures.immediateFuture(entry);
-        }
-
-        // try to load entity from DB
-        ListenableFuture<Entry> findFuture = super.findOneAsync(keys);
-
-        Futures.addCallback(findFuture, new FutureCallback<Entry>() {
-            @Override
-            public void onSuccess(Entry result) {
-                if (result != null) {
-                    cache.putIfAbsent(cacheKey, result);
-                }
-            }
-
-            @Override
-            public void onFailure(Throwable t) {
-                LOGGER.warn("Can't get entry from DB", t);
-            }
-        });
-
-        monitorFuture(time, findFuture);
-
-        return findFuture;
+        return Futures.immediateFuture(findOne(keys));
     }
 
     @Override
     public Entry findOne(Object... keys) {
-        Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name());
+        try (Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name())) {
 
-        long cacheKey = buildHashCode(keys);
+            List cacheKey = Arrays.asList(keys);
 
-        Entry entry = cache.get(cacheKey);
+            return cache.get(cacheKey);
+        } catch (Exception e) {
+            LOGGER.warn("Can't find entity", e);
 
-        if (entry != null) {
-            getMetrics().getCounter(MetricsType.CACHEABLE_DATA_PROVIDER_HITS.name()).inc();
-
-            time.stop();
-
-        } else {
-            entry = super.findOne(keys);
-
-            if (entry != null) {
-                cache.put(cacheKey, entry);
-            }
+            return null;
         }
-
-        time.stop();
-
-        return entry;
     }
 
     @Override
@@ -127,18 +72,8 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return Return value from entry processor
      */
-    public <ReturnValue> ReturnValue executeOnEntry(Entry entry, CacheEntryProcessor<Long, Entry, ReturnValue> entryProcessor) {
-        long key = buildHashCode(entry);
-
-        if (!cache.containsKey(key)) {
-            List<Object> primaryKeys = getPrimaryKeys(entry);
-
-            List<Entry> entries = super.fetch(primaryKeys);
-
-            Optional<Entry> first = entries.stream().findFirst();
-
-            first.ifPresent(entry1 -> cache.putIfAbsent(key, entry1));
-        }
+    public <ReturnValue> ReturnValue executeOnEntry(Entry entry, CacheEntryProcessor<List, Entry, ReturnValue> entryProcessor) {
+        List key = getPrimaryKeys(entry);
 
         return cache.invoke(key, entryProcessor);
     }
@@ -154,7 +89,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
     public ListenableFuture<Boolean> saveAsync(Entry entity) {
         Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE.name());
 
-        long cacheKey = buildHashCode(entity);
+        List cacheKey = getPrimaryKeys(entity);
 
         cache.put(cacheKey, entity);
 
@@ -174,7 +109,7 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
         Timer timer = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE.name());
 
-        long key = buildHashCode(entity);
+        List key = getPrimaryKeys(entity);
 
         cache.remove(key);
 
@@ -188,25 +123,17 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return CacheConfiguration instance
      */
-    @NotNull
-    public CacheConfiguration<Long, Entry> getCacheConfiguration() {
-        return CacheUtils.getDefaultCacheConfiguration(getEntityClass());
+    private CacheConfiguration<List, Entry> getCacheConfiguration() {
+        CacheDaoFactory<Entry> factory = new CacheDaoFactory<>(cassandraClientFactory, getEntityClass());
 
-    }
+        CacheConfiguration<List, Entry> defaultCacheConfiguration = CacheUtils.getDefaultCacheConfiguration(getEntityClass());
+        defaultCacheConfiguration.setWriteThrough(true);
+        defaultCacheConfiguration.setWriteBehindEnabled(true);
+        defaultCacheConfiguration.setReadThrough(true);
+        defaultCacheConfiguration.setCacheWriterFactory(factory);
+        defaultCacheConfiguration.setCacheLoaderFactory(factory);
 
-    @NotNull
-    private String getMapName() {
-        return cache.getName();
-    }
-
-    private void initializeEventListener(Ignite ignite) {
-        ignite.events()
-              .localListen(
-                      new LocalCacheEventListener(),
-                      EventType.EVT_CACHE_OBJECT_EXPIRED,
-                      EventType.EVT_CACHE_OBJECT_PUT,
-                      EventType.EVT_CACHE_OBJECT_REMOVED
-              );
+        return defaultCacheConfiguration;
     }
 
     private enum MetricsType {
@@ -214,35 +141,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE,
         CACHEABLE_DATA_PROVIDER_HITS,
         CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE;
-
     }
 
-    /**
-     * LocalCache listener perform save and remove operation into persistence storage when retrieve event from cache
-     */
-    private class LocalCacheEventListener implements IgnitePredicate<Event> {
-
-        @Override
-        public boolean apply(Event event) {
-            if (event instanceof CacheEvent) {
-                CacheEvent cacheEvent = (CacheEvent) event;
-
-                if (StringUtils.equals(getMapName(), cacheEvent.cacheName())) {
-
-                    switch (cacheEvent.type()) {
-                        case EventType.EVT_CACHE_OBJECT_EXPIRED:
-                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
-                            break;
-                        case EventType.EVT_CACHE_OBJECT_PUT:
-                            CacheableDataProvider.super.saveAsync((Entry) cacheEvent.newValue());
-                            break;
-                        case EventType.EVT_CACHE_OBJECT_REMOVED:
-                            CacheableDataProvider.super.removeAsync((Entry) cacheEvent.oldValue());
-                            break;
-                    }
-                }
-            }
-            return true;
-        }
-    }
 }
