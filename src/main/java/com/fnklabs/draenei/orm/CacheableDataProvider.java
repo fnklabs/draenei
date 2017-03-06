@@ -7,6 +7,8 @@ import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CacheEntryProcessor;
+import org.apache.ignite.cache.CacheWriteSynchronizationMode;
+import org.apache.ignite.cache.eviction.fifo.FifoEvictionPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +51,6 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         try (Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_FIND.name())) {
 
             List cacheKey = Arrays.asList(keys);
-
             return cache.get(cacheKey);
         } catch (Exception e) {
             LOGGER.warn("Can't find entity", e);
@@ -78,15 +79,9 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
         return cache.invoke(key, entryProcessor);
     }
 
-    /**
-     * Put entity to cache, save to persistence storage operation will be executed in background
-     *
-     * @param entity Target entity
-     *
-     * @return Future for put to cache operation
-     */
+    /** {@inheritDoc} */
     @Override
-    public ListenableFuture<Boolean> saveAsync(Entry entity) {
+    public Boolean save(Entry entity) {
         Timer time = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_PUT_TO_CACHE.name());
 
         List cacheKey = getPrimaryKeys(entity);
@@ -95,18 +90,19 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
         time.stop();
 
-        return Futures.immediateFuture(true);
+        return true;
     }
 
-    /**
-     * Remove entity from cache, remove from persistence storage operation will be executed in background
-     *
-     * @param entity Target entity
-     *
-     * @return Future for remove from cache operation
-     */
-    public ListenableFuture<Boolean> removeAsync(Entry entity) {
+    /** {@inheritDoc} */
+    @Override
+    public ListenableFuture<Boolean> saveAsync(Entry entity) {
+        return Futures.immediateFuture(save(entity));
+    }
 
+
+    /** {@inheritDoc} */
+    @Override
+    public Boolean remove(Entry entity) {
         Timer timer = getMetrics().getTimer(MetricsType.CACHEABLE_DATA_PROVIDER_REMOVE_FROM_CACHE.name());
 
         List key = getPrimaryKeys(entity);
@@ -115,7 +111,13 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
 
         timer.stop();
 
-        return Futures.immediateFuture(true);
+        return true;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public ListenableFuture<Boolean> removeAsync(Entry entity) {
+        return Futures.immediateFuture(remove(entity));
     }
 
     /**
@@ -123,15 +125,17 @@ public class CacheableDataProvider<Entry extends Serializable> extends DataProvi
      *
      * @return CacheConfiguration instance
      */
-    private CacheConfiguration<List, Entry> getCacheConfiguration() {
+    protected CacheConfiguration<List, Entry> getCacheConfiguration() {
         CacheDaoFactory<Entry> factory = new CacheDaoFactory<>(cassandraClientFactory, getEntityClass());
 
         CacheConfiguration<List, Entry> defaultCacheConfiguration = CacheUtils.getDefaultCacheConfiguration(getEntityClass());
         defaultCacheConfiguration.setWriteThrough(true);
         defaultCacheConfiguration.setWriteBehindEnabled(true);
         defaultCacheConfiguration.setReadThrough(true);
+        defaultCacheConfiguration.setWriteSynchronizationMode(CacheWriteSynchronizationMode.PRIMARY_SYNC);
         defaultCacheConfiguration.setCacheWriterFactory(factory);
         defaultCacheConfiguration.setCacheLoaderFactory(factory);
+        defaultCacheConfiguration.setEvictionPolicy(new FifoEvictionPolicy(5_000));
 
         return defaultCacheConfiguration;
     }

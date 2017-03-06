@@ -1,54 +1,62 @@
 package com.fnklabs.draenei.orm;
 
 import com.datastax.driver.core.DataType;
+import com.datastax.driver.core.ParseUtils;
 import com.datastax.driver.core.ProtocolVersion;
 import com.datastax.driver.core.TypeCodec;
 import com.datastax.driver.core.exceptions.InvalidTypeException;
 import com.datastax.driver.core.utils.Bytes;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
 import java.nio.ByteBuffer;
+import java.text.ParseException;
+import java.util.Date;
 
 public class DateTimeCodec extends TypeCodec<DateTime> {
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = ISODateTimeFormat.basicDateTime();
-
     public DateTimeCodec() {
-        super(DataType.varchar(), DateTime.class);
+        super(DataType.bigint(), DateTime.class);
     }
 
-    /** {@inheritDoc} */
     @Override
-    public ByteBuffer serialize(DateTime value, ProtocolVersion protocolVersion) throws InvalidTypeException {
+    public DateTime parse(String value) {
+        if (value == null || value.isEmpty() || value.equalsIgnoreCase("NULL"))
+            return null;
+
+        return new DateTime(Long.parseLong(value), DateTimeZone.UTC);
+
+    }
+
+    @Override
+    public String format(DateTime value) {
+        if (value == null)
+            return "NULL";
+
+        return Long.toString(value.getMillis());
+    }
+
+    @Override
+    public ByteBuffer serialize(DateTime value, ProtocolVersion protocolVersion) {
         if (value == null) {
             return null;
         }
 
-        return ByteBuffer.wrap(value.toString(DATE_TIME_FORMATTER).getBytes());
+        ByteBuffer bb = ByteBuffer.allocate(8);
+        bb.putLong(0, value.getMillis());
+
+        return bb;
     }
 
-    /** {@inheritDoc} */
     @Override
-    public DateTime deserialize(ByteBuffer bytes, ProtocolVersion protocolVersion) throws InvalidTypeException {
-        if (bytes == null) {
+    public DateTime deserialize(ByteBuffer bytes, ProtocolVersion protocolVersion) {
+        if (bytes == null || bytes.remaining() == 0)
             return null;
-        }
 
-        String dateTime = new String(Bytes.getArray(bytes));
+        if (bytes.remaining() != 8)
+            throw new InvalidTypeException("Invalid 64-bits long value, expecting 8 bytes but got " + bytes.remaining());
 
-        return DateTime.parse(dateTime, DATE_TIME_FORMATTER);
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public DateTime parse(String value) throws InvalidTypeException {
-        return value == null ? null : DateTime.parse(value, DATE_TIME_FORMATTER);
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public String format(DateTime value) throws InvalidTypeException {
-        return value == null ? "NULL" : value.toString(DATE_TIME_FORMATTER);
+        return new DateTime(bytes.getLong(), DateTimeZone.UTC);
     }
 }

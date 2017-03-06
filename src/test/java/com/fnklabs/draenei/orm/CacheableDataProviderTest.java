@@ -30,7 +30,7 @@ public class CacheableDataProviderTest {
 
     @Before
     public void setUp() throws Exception {
-        cassandraClientFactory = new CassandraClientFactory("cassandra", "", "test", "10.91.7.81");
+        cassandraClientFactory = new CassandraClientFactory("cassandra", "2tikj8paQZriHr3", "test", "10.91.7.81");
         ignite = Ignition.start(getIgniteConfiguration());
     }
 
