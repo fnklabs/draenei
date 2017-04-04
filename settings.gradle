@@ -1,1 +1,5 @@
-rootProject.name = "fnklabs-draenei"
+rootProject.name = "draenei"
+
+include "orm"
+include "analytics"
+include "ignite"

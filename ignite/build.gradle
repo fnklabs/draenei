@@ -1,0 +1,22 @@
+dependencies {
+    compile project(":orm")
+
+    compile "joda-time:joda-time:$vers.jodatime"
+    compile "com.intellij:annotations:$vers.intellij"
+
+    compile "org.slf4j:slf4j-api:$vers.slf4j"
+
+    compile "com.google.guava:guava:$vers.guava"
+
+    compile "org.apache.ignite:ignite-core:$vers.ignite"
+    compile "org.apache.ignite:ignite-slf4j:$vers.ignite"
+    compile "org.apache.ignite:ignite-indexing:$vers.ignite"
+
+    compile "com.fnklabs:fnklabs-metrics-codahale:$vers.metrics"
+    compile "com.fnklabs:fnklabs-metrics-core:$vers.metrics"
+
+    testCompile "junit:junit:$vers.junit"
+    testCompile "org.mockito:mockito-core:$vers.mockito"
+    testCompile "org.openjdk.jmh:jmh-core:$vers.jmh"
+    testCompile "org.openjdk.jmh:jmh-generator-annprocess:$vers.jmh"
+}

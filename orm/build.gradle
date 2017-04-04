@@ -1,0 +1,22 @@
+dependencies {
+    compile "joda-time:joda-time:$vers.jodatime"
+    compile "com.intellij:annotations:$vers.intellij"
+
+    compile "com.datastax.cassandra:cassandra-driver-core:$vers.cassandra"
+
+    compile "org.slf4j:slf4j-api:$vers.slf4j"
+    compile "org.apache.commons:commons-lang3:$vers.commonslang3"
+    compile "javax.cache:cache-api:$vers.cacheapi"
+
+    compile "com.google.guava:guava:$vers.guava"
+
+    compile "commons-beanutils:commons-beanutils:$vers.beanutils"
+
+    compile "com.fnklabs:fnklabs-metrics-codahale:$vers.metrics"
+    compile "com.fnklabs:fnklabs-metrics-core:$vers.metrics"
+
+    testCompile "junit:junit:$vers.junit"
+    testCompile "org.mockito:mockito-core:$vers.mockito"
+    testCompile "org.openjdk.jmh:jmh-core:$vers.jmh"
+    testCompile "org.openjdk.jmh:jmh-generator-annprocess:$vers.jmh"
+}

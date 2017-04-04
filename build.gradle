@@ -1,156 +1,126 @@
-apply plugin: "java"
-apply plugin: "idea"
-apply plugin: "maven"
-apply plugin: "signing"
+subprojects {
+    apply plugin: "java"
+    apply plugin: "idea"
+    apply plugin: "maven"
+    apply plugin: "signing"
 
-if (hasProperty("teamcity")) {
-    project.ext.buildVersion = teamcity["build.number"]
-} else {
-    project.ext.buildVersion = "0.3.3.2"
-}
-
-version = project.ext.buildVersion
-group = "com.fnklabs"
-
-println("App module version:" + project.ext.buildVersion)
-
-repositories {
-    mavenCentral()
-    mavenLocal()
-    maven { url "http://dl.bintray.com/akuznetsov/russianmorphology" }
-}
-
-buildscript {
-    repositories {
-        mavenLocal()
-        mavenCentral()
-        maven { url "http://dl.bintray.com/jfrog/jfrog-jars" }
+    if (hasProperty("teamcity")) {
+        project.ext.buildVersion = teamcity["build.number"]
+    } else {
+        project.ext.buildVersion = "undefined"
     }
-    dependencies {
-        classpath(group: "org.jfrog.buildinfo", name: "build-info-extractor-gradle", version: "2.2.4")
-    }
-}
 
-configurations {
-    compile.exclude module: "slf4j-log4j12"
-    compile.exclude module: "hibernate-validator"
-}
-
-ext {
-    vers = [
-            slf4j    : '1.7.22',
-            logback  : '1.2.1',
-            guava    : '18.0',
-            cassandra: '3.1.4',
-            ignite   : '1.8.0',
-            jodatime : '2.9.4',
-            metrics  : '0.1.14',
-    ]
-}
-
-dependencies {
-    testCompile "junit:junit:4.12"
-    testCompile "org.mockito:mockito-all:1.9.5"
-    testCompile "org.openjdk.jmh:jmh-core:1.11.2"
-    testCompile "org.openjdk.jmh:jmh-generator-annprocess:1.11.2"
-
-    compile "joda-time:joda-time:$vers.jodatime"
-    compile "com.intellij:annotations:12.0"
-
-    compile "com.datastax.cassandra:cassandra-driver-core:$vers.cassandra"
-
-    compile "org.slf4j:slf4j-api:$vers.slf4j"
-    compile "ch.qos.logback:logback-core:$vers.logback"
-    compile "ch.qos.logback:logback-classic:$vers.logback"
-
-    compile "com.google.guava:guava:$vers.guava"
-
-    compile "commons-beanutils:commons-beanutils:1.9.2"
-
-    compile "org.apache.commons:commons-math:2.2"
-    compile "org.apache.commons:commons-lang3:3.3.2"
-
-    compile "org.apache.lucene.morphology:russian:1.1"
-    compile "org.apache.lucene.morphology:english:1.1"
-
-
-    compile "org.apache.ignite:ignite-core:$vers.ignite"
-    compile "org.apache.ignite:ignite-slf4j:$vers.ignite"
-    compile "org.apache.ignite:ignite-indexing:$vers.ignite"
-
-
-    compile "com.fnklabs:fnklabs-metrics-codahale:$vers.metrics"
-    compile "com.fnklabs:fnklabs-metrics-core:$vers.metrics"
-}
-
-
-
-jar {
-    baseName = "fnklabs-draenei"
     version = project.ext.buildVersion
-}
+    group = "com.fnklabs"
 
-task wrapper(type: Wrapper) {
-    gradleVersion = "2.1"
-}
+    println("App module version:" + project.ext.buildVersion)
 
-task javadocJar(type: Jar) {
-    classifier = "javadoc"
-    from javadoc
-}
-
-task sourcesJar(type: Jar) {
-    classifier = "sources"
-    from sourceSets.main.allSource
-}
-
-artifacts {
-    archives jar
-    archives javadocJar
-    archives sourcesJar
-}
-
-signing {
-    sign configurations.archives
-}
-
-
-uploadArchives {
     repositories {
-        mavenDeployer {
-            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+        mavenCentral()
+        mavenLocal()
+        maven { url "http://dl.bintray.com/akuznetsov/russianmorphology" }
+    }
 
-            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                authentication(userName: sonatypeUsername, password: sonatypePassword)
-            }
+    buildscript {
+        repositories {
+            mavenLocal()
+            mavenCentral()
+            maven { url "http://dl.bintray.com/jfrog/jfrog-jars" }
+        }
+        dependencies {
+            classpath(group: "org.jfrog.buildinfo", name: "build-info-extractor-gradle", version: "2.2.4")
+        }
+    }
 
-            pom.project {
-                name "draenei"
-                packaging "jar"
-                description "ORM for Cassandra but with distributed cache and analytics utils from package"
-                url "https://github.com/fnklabs/draenei"
+    configurations {
+        compile.exclude module: "slf4j-log4j12"
+        compile.exclude module: "hibernate-validator"
+    }
 
-                scm {
-                    url "scm:git@github.com:fnklabs/draenei.git"
-                    connection "scm:git@github.com:fnklabs/draenei.git"
-                    developerConnection "scm:git@github.com:fnklabs/draenei.git"
+    ext {
+        vers = [
+                beanutils   : '1.9.2',
+                cacheapi    : '1.0.0',
+                cassandra   : '3.1.4',
+                commonsmath : '2.2',
+                commonslang3: '3.5',
+                guava       : '18.0',
+                jodatime    : '2.9.4',
+                ignite      : '1.9.0',
+                intellij    : '12.0',
+                junit       : '4.12',
+                jmh         : '1.11.2',
+                logback     : '1.2.1',
+                metrics     : '0.1.14',
+                mockito     : '2.7.21',
+                morphology  : '1.1',
+                slf4j       : '1.7.22',
+        ]
+    }
+
+    task javadocJar(type: Jar) {
+        classifier = "javadoc"
+        from javadoc
+    }
+
+    task sourcesJar(type: Jar) {
+        classifier = "sources"
+        from sourceSets.main.allSource
+    }
+
+    artifacts {
+        archives jar
+        archives javadocJar
+        archives sourcesJar
+    }
+
+    signing {
+        sign configurations.archives
+    }
+
+
+    uploadArchives {
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                    authentication(userName: sonatypeUsername, password: sonatypePassword)
                 }
 
-                licenses {
-                    license {
-                        name "The Apache Software License, Version 2.0"
-                        url "http://www.apache.org/licenses/LICENSE-2.0.txt"
-                        distribution "repo"
+                pom.project {
+                    name "draenei"
+                    packaging "jar"
+                    description "ORM for Cassandra but with distributed cache and analytics utils from package"
+                    url "https://github.com/fnklabs/draenei"
+
+                    scm {
+                        url "scm:git@github.com:fnklabs/draenei.git"
+                        connection "scm:git@github.com:fnklabs/draenei.git"
+                        developerConnection "scm:git@github.com:fnklabs/draenei.git"
                     }
-                }
 
-                developers {
-                    developer {
-                        id "aysheka"
-                        name "Alisher Alimov"
+                    licenses {
+                        license {
+                            name "The Apache Software License, Version 2.0"
+                            url "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                            distribution "repo"
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id "aysheka"
+                            name "Alisher Alimov"
+                        }
                     }
                 }
             }
         }
     }
 }
+
+task wrapper(type: Wrapper) {
+    gradleVersion = "2.1"
+}
+
