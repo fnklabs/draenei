@@ -4,16 +4,17 @@ subprojects {
     apply plugin: "maven"
     apply plugin: "signing"
 
-    if (hasProperty("teamcity")) {
-        project.ext.buildVersion = teamcity["build.number"]
-    } else {
-        project.ext.buildVersion = "undefined"
+    project.group = 'com.fnklabs.draenei'
+    project.version = 'undefined'
+
+    if (project.hasProperty("teamcity")) {
+        project.version = project.teamcity["build.number"]
     }
 
-    version = project.ext.buildVersion
-    group = "com.fnklabs.draenei"
+    println("App module version:" + project.version)
 
-    println("App module version:" + project.ext.buildVersion)
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 
     repositories {
         mavenCentral()
