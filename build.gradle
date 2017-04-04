@@ -11,7 +11,7 @@ subprojects {
     }
 
     version = project.ext.buildVersion
-    group = "com.fnklabs"
+    group = "com.fnklabs.draenei"
 
     println("App module version:" + project.ext.buildVersion)
 
