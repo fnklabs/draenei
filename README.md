@@ -8,13 +8,7 @@ Project exists in R&D mode
 ### Gradle 
 
 ```
-compile 'com.fnklabs:fnklabs-draenei:0.1.2'
-```
-
-### Or as git submodule (preferred)
-
-```bash
-git submodule add https://github.com/fnklabs/draenei.git draenei
+compile "com.fnklabs:fnklabs-draenei:$vers.draenei"
 ```
 
 # Annotations
@@ -25,6 +19,7 @@ There are several annotations that make help your to mark your entity
 Column name, value is optional by default will use field name as value
 
 ```java
+@Table
 class User {
     @Column(name = "value")
     private String name;
@@ -39,6 +34,7 @@ class User {
 Each entity must contains at least one primary key (partition key).
 
 ```java
+@Table
 class User {
     @PrimaryKey
     @Column
@@ -55,6 +51,7 @@ class User {
 Entity can contains several partition keys in this case you must set order value for each primary key
  
 ```java
+@Table
 class User {
     @PrimaryKey
     @Column
@@ -75,6 +72,7 @@ class User {
 By default all primary keys belong to partition group if you want to mark some primary keys as clustering set PrimaryKey.isPartitionKey = false
 
 ```java
+@Table
 class User {
     @PrimaryKey
     @Column
@@ -97,6 +95,7 @@ class User {
 To use enum fields you must set Enumerated.enumType value (need for serialization, deserialization). In current implementation all enum fields stored as text values
 
 ```java
+@Table
 class User {
     @Enumerated(enumType = UserRole.class)
     @Column
@@ -147,32 +146,25 @@ class User {
 
 # DataProvider
 
-There are two several implementation of DataProvider:
 
-1. com.fnklabs.draenei.orm.DataProvider (base implementation)
-2. com.fnklabs.draenei.orm.CacheableDataProvider (use data grid for caching)
-
-## DataProvider
-
-### Create your first dataProvider
+## Create your first dataProvider
 
 ```java
 public class UserDataProvider extends DataProvider<User> {
-    public User(CassandraClientFactory cassandraClientFactory, ExecutorService executorService) {
-        super(User.class, cassandraClientFactory, executorService);
+    public User(CassandraClientFactory cassandraClientFactory) {
+        super(User.class, cassandraClientFactory);
     }
 }
 ```
 
-### Saving data
+## Saving data
 
 ```java
 public class Example {
-    private static CassandraClientFactory = // implement CassandraClientFactory;
-    private static ExecutorService = // retrieve executor service for data provider;
+    
     
     public static void main(String[] args) {
-        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory, executorService);
+        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory);
         
         User user = new User();
         user.setEmail("test@example.com");
@@ -182,17 +174,15 @@ public class Example {
 }
 ```
 
-### Find data
+## Find data
 
 When calling find method you must provide all partition keys
 
 ```java
 public class Example {
-    private static CassandraClientFactory = // implement CassandraClientFactory;
-    private static ExecutorService = // retrieve executor service for data provider;
     
     public static void main(String[] args) {
-        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory, executorService);
+        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory);
         
         List<User> users = dataProvider.find("test@example.com"); // sync
         ListenableFuture<List<User>> findUsersFuture = dataProvider.findAsync("test@example.com"); // async
@@ -205,17 +195,15 @@ public class Example {
 }
 ```
 
-### Removing data
+## Removing data
 
 To remove data you must provide entity object
 
 ```java
 public class Example {
-    private static CassandraClientFactory = // implement CassandraClientFactory;
-    private static ExecutorService = // retrieve executor service for data provider;
     
     public static void main(String[] args) {
-        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory, executorService);
+        UserDataProvider dataProvider = new UserDataProvider(cassandraClientFactory);
         
         User user = new User();
         user.setEmail("test@example.com");
